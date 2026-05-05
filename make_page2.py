@@ -197,7 +197,7 @@ def build_description_block(
 
 def build_postfix_text_block() -> Image.Image:
     title_font = get_font(56, bold=True)
-    body_font = get_font(27, bold=False)
+    body_font = get_font(26, bold=False)
 
     text = [
         ("GO GREEN PACKAGE", [
