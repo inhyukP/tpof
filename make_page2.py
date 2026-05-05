@@ -138,7 +138,7 @@ def build_description_block(
     extra_text: str = "",
 ) -> Image.Image:
     title_font = get_font(46, bold=True)
-    body_font = get_font(31, bold=False)
+    body_font = get_font(28, bold=False)
 
     lines_raw = []
     if item_text.strip():
