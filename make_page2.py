@@ -4,10 +4,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-try:
-    from streamlit_cropper import st_cropper
-except ImportError:
-    st_cropper = None
+from streamlit_cropper import st_cropper
 
 
 # =========================
@@ -84,31 +81,16 @@ def resize_contain(img: Image.Image, w: int, h: int, bg=WHITE) -> Image.Image:
 def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int]) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
 
-    if st_cropper is not None:
-        cropped = st_cropper(
-            img,
-            realtime_update=True,
-            box_color="#4CAF50",
-            aspect_ratio=aspect_ratio,
-            return_type="image",
-            key=key,
-        )
-        return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
-
-    st.caption("`streamlit-cropper`가 없어 슬라이더 방식 크롭으로 동작합니다.")
-    iw, ih = img.size
-    target_ratio = aspect_ratio[0] / aspect_ratio[1]
-
-    width = st.slider(f"{label} 너비", min_value=50, max_value=iw, value=iw, key=f"{key}_w")
-    height_default = min(ih, max(50, int(width / target_ratio)))
-    height = st.slider(f"{label} 높이", min_value=50, max_value=ih, value=height_default, key=f"{key}_h")
-
-    max_x = max(0, iw - width)
-    max_y = max(0, ih - height)
-    x = st.slider(f"{label} X", min_value=0, max_value=max_x, value=0, key=f"{key}_x")
-    y = st.slider(f"{label} Y", min_value=0, max_value=max_y, value=0, key=f"{key}_y")
-
-    return img.crop((x, y, x + width, y + height))
+    st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
+    cropped = st_cropper(
+        img,
+        realtime_update=True,
+        box_color="#4CAF50",
+        aspect_ratio=aspect_ratio,
+        return_type="image",
+        key=key,
+    )
+    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
 
 
 # =========================
@@ -268,8 +250,6 @@ def build_detail_page(
 st.set_page_config(page_title="Jewelry Detail Page Maker", layout="centered")
 st.title("Jewelry Detail Page Maker")
 
-if st_cropper is None:
-    st.warning("선택 영역을 드래그하는 크롭 기능을 사용하려면 `pip install streamlit-cropper`를 설치하세요.")
 
 st.markdown("### 1. Main 사진 1장 업로드")
 main_file = st.file_uploader(
