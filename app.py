@@ -326,7 +326,7 @@ def build_detail_page(
         extra_text=extra_text,
     )
     blocks.append(desc_block)
-    blocks.append(spacer(PHOTO_GAP), bg=PAGE_BG)
+    blocks.append(spacer(PHOTO_GAP), bg=PAGE_BG))
 
     for img in model_imgs:
         model_block = resize_cover(img, PAGE_W, 980)
