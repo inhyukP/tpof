@@ -11,6 +11,7 @@ PAGE_BG = (255, 255, 255)
 BLACK = (20, 20, 20)
 PAGE_BG = (245, 245, 245)
 PHOTO_GAP = 32
+PHOTO_BORDER = 20
 PRODUCT_CUT_H = 980
 POST_BOX_PATH = Path("assets/postfix_box.jpg")
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
@@ -82,6 +83,23 @@ def resize_contain(img: Image.Image, w: int, h: int, bg=PAGE_BG) -> Image.Image:
 
 def spacer(height: int, bg=PAGE_BG) -> Image.Image:
     return Image.new("RGB", (PAGE_W, height), bg)
+
+
+def add_bg_border(block: Image.Image, border: int, bg=PAGE_BG, fit_mode: str = "cover") -> Image.Image:
+    if border <= 0:
+        return block
+
+    inner_w = max(1, block.width - (border * 2))
+    inner_h = max(1, block.height - (border * 2))
+
+    if fit_mode == "contain":
+        inner = resize_contain(block, inner_w, inner_h, bg=bg)
+    else:
+        inner = resize_cover(block, inner_w, inner_h)
+
+    canvas = Image.new("RGB", (block.width, block.height), bg)
+    canvas.paste(inner, (border, border))
+    return canvas
 
 
 def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int]) -> Image.Image:
@@ -294,8 +312,9 @@ def build_detail_page(
 ):
     blocks = []
 
-    blocks.append(resize_cover(main_img, PAGE_W, 980))
-    blocks.append(spacer(PHOTO_GAP))
+    main_block = resize_cover(main_img, PAGE_W, 980)
+    blocks.append(add_bg_border(main_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
+    blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
     desc_block = build_description_block(
         product_name=product_name,
@@ -307,21 +326,26 @@ def build_detail_page(
         extra_text=extra_text,
     )
     blocks.append(desc_block)
-    blocks.append(spacer(PHOTO_GAP))
+    blocks.append(spacer(PHOTO_GAP), bg=PAGE_BG)
 
     for img in model_imgs:
-        blocks.append(resize_cover(img, PAGE_W, 980))
-        blocks.append(spacer(PHOTO_GAP))
+        model_block = resize_cover(img, PAGE_W, 980)
+        blocks.append(add_bg_border(model_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
+        blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
+
 
     for img in product_imgs:
-        blocks.append(resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=PAGE_BG))
-        blocks.append(spacer(PHOTO_GAP))
+        product_block = resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=PAGE_BG)
+        blocks.append(add_bg_border(product_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="contain"))
+        blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
+    
     if POST_BOX_PATH.exists():
         post_box = Image.open(POST_BOX_PATH)
         post_box = ImageOps.exif_transpose(post_box).convert("RGB")
-        blocks.append(resize_cover(post_box, PAGE_W, PRODUCT_CUT_H))
-        blocks.append(spacer(PHOTO_GAP))
+        post_box_block = resize_cover(post_box, PAGE_W, PRODUCT_CUT_H)
+        blocks.append(add_bg_border(post_box_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
+        blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
     blocks.append(build_postfix_text_block())
 
