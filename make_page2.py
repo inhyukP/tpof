@@ -11,6 +11,7 @@ WHITE = (255, 255, 255)
 BLACK = (20, 20, 20)
 DESC_BG = (245, 245, 245)
 PHOTO_GAP = 64
+FIXED_POSTFIX_BOX_PATH = Path("assets/postfix_box.jpg")
 
 
 def get_font(size: int, bold: bool = False):
@@ -189,6 +190,71 @@ def build_description_block(
     return img
 
 
+
+
+def build_postfix_text_block() -> Image.Image:
+    title_font = get_font(56, bold=True)
+    body_font = get_font(35, bold=False)
+
+    text = [
+        ("GO GREEN PACKAGE", [
+            "더파트오브는 지구의 환경 보호를 위해 노력합니다.",
+            "패키지는 모두 재활용이 가능한 종이와 면으로 제작되었습니다.",
+            "제품은 기본 패키지에 안전하게 포장되어 발송됩니다.",
+        ]),
+        ("ORDER", [
+            "[일반 상품] 주문 확인 후 1~3일 내로 배송됩니다.",
+            "[주문 제작 상품] 사이즈/이니셜 선택 제품은 제작 기간이 추가될 수 있습니다.",
+            "문의 : 카카오톡 채널 @thepartof",
+        ]),
+        ("EXCHANGE / RETURN", [
+            "모든 교환/환불 문의는 카카오톡 채널 @thepartof 또는 Q&A 게시판으로 접수 바랍니다.",
+            "제품 하자 시 동일 상품 또는 유사 가격 상품으로 교환이 가능합니다.",
+        ]),
+        ("AFTER SERVICE", [
+            "품질 보증 기간은 보증서 기준이며, 제품별로 수리 가능 여부가 다를 수 있습니다.",
+            "A/S 문의 : 카카오톡 채널 @thepartof",
+        ]),
+        ("ATTENTION", [
+            "착용 흔적/오염/훼손이 있는 경우 교환 및 반품이 제한될 수 있습니다.",
+            "모니터 환경에 따라 실제 색상과 차이가 있을 수 있습니다.",
+        ]),
+    ]
+
+    temp = Image.new("RGB", (PAGE_W, 100), DESC_BG)
+    d = ImageDraw.Draw(temp)
+    max_w = int(PAGE_W * 0.86)
+
+    lines = []
+    for header, body_lines in text:
+        lines.append(("header", header))
+        for bl in body_lines:
+            for wrapped in wrap_text(d, bl, body_font, max_w):
+                lines.append(("body", wrapped))
+        lines.append(("space", ""))
+
+    h = 120
+    for kind, _ in lines:
+        h += 72 if kind == "header" else 46 if kind == "body" else 30
+    h += 60
+
+    img = Image.new("RGB", (PAGE_W, h), DESC_BG)
+    d = ImageDraw.Draw(img)
+    y = 80
+    cx = PAGE_W // 2
+
+    for kind, txt in lines:
+        if kind == "header":
+            d.text((cx, y), txt, font=title_font, fill=BLACK, anchor="ma")
+            y += 72
+        elif kind == "body":
+            d.text((40, y), txt, font=body_font, fill=BLACK, anchor="la")
+            y += 46
+        else:
+            y += 30
+
+    return img
+
 def stack_blocks(blocks):
     total_h = sum(block.height for block in blocks)
     canvas = Image.new("RGB", (PAGE_W, total_h), WHITE)
@@ -212,8 +278,6 @@ def build_detail_page(
     extra_text,
     model_imgs,
     product_imgs,
-    postfix_box_img,
-    postfix_text_img,
 ):
     blocks = []
 
@@ -240,12 +304,13 @@ def build_detail_page(
         blocks.append(resize_contain(img, PAGE_W, 900, bg=WHITE))
         blocks.append(spacer(PHOTO_GAP))
 
-    if postfix_box_img is not None:
-        blocks.append(resize_contain(postfix_box_img, PAGE_W, 900, bg=WHITE))
+    if FIXED_POSTFIX_BOX_PATH.exists():
+        fixed_box = Image.open(FIXED_POSTFIX_BOX_PATH)
+        fixed_box = ImageOps.exif_transpose(fixed_box).convert("RGB")
+        blocks.append(resize_contain(fixed_box, PAGE_W, 900, bg=WHITE))
         blocks.append(spacer(PHOTO_GAP))
 
-    if postfix_text_img is not None:
-        blocks.append(resize_contain(postfix_text_img, PAGE_W, 1450, bg=DESC_BG))
+    blocks.append(build_postfix_text_block())
 
     return stack_blocks(blocks)
 
@@ -325,33 +390,10 @@ if product_files:
             st.image(img, use_container_width=True)
 
 st.markdown("---")
-st.markdown("### 5. Postfix 이미지 업로드 (제품사진 뒤 순서대로)")
-postfix_box_file = st.file_uploader(
-    "1) 박스 사진 업로드",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=False,
-    key="postfix_box_file",
-)
-postfix_text_file = st.file_uploader(
-    "2) 글자 사진 업로드",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=False,
-    key="postfix_text_file",
-)
 
-postfix_box_img = None
-if postfix_box_file:
-    postfix_box_img = load_image(postfix_box_file)
-    postfix_box_img = crop_with_ui(postfix_box_img, key="postfix_box_crop", label="박스 사진", aspect_ratio=(43, 45))
-    st.image(postfix_box_img, caption="Postfix 1: 박스 사진", use_container_width=True)
+if not FIXED_POSTFIX_BOX_PATH.exists():
+    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box.jpg")
 
-postfix_text_img = None
-if postfix_text_file:
-    postfix_text_img = load_image(postfix_text_file)
-    postfix_text_img = crop_with_ui(postfix_text_img, key="postfix_text_crop", label="글자 사진", aspect_ratio=(3, 8))
-    st.image(postfix_text_img, caption="Postfix 2: 글자 사진", use_container_width=True)
-
-st.markdown("---")
 
 if st.button("상세페이지 생성"):
     if main_img is None:
@@ -368,8 +410,6 @@ if st.button("상세페이지 생성"):
             extra_text=extra_text,
             model_imgs=model_imgs,
             product_imgs=product_imgs,
-            postfix_box_img=postfix_box_img,
-            postfix_text_img=postfix_text_img,
         )
 
         st.success("상세페이지 생성 완료")
