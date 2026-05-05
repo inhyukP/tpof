@@ -3,50 +3,46 @@ from pathlib import Path
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-
 from streamlit_cropper import st_cropper
 
 
-# =========================
-# 기본 설정
-# =========================
 PAGE_W = 860
 WHITE = (255, 255, 255)
 BLACK = (20, 20, 20)
 DESC_BG = (245, 245, 245)
+PHOTO_GAP = 64
 
 
-# =========================
-# 폰트
-# =========================
 def get_font(size: int, bold: bool = False):
-    candidates = []
+    pretendard_candidates = [
+        "./Pretendard-Bold.otf" if bold else "./Pretendard-Regular.otf",
+        "./fonts/Pretendard-Bold.otf" if bold else "./fonts/Pretendard-Regular.otf",
+        "/usr/share/fonts/truetype/pretendard/Pretendard-Bold.ttf" if bold else "/usr/share/fonts/truetype/pretendard/Pretendard-Regular.ttf",
+    ]
 
+    fallback_candidates = []
     if bold:
-        candidates += [
+        fallback_candidates += [
             "C:/Windows/Fonts/malgunbd.ttf",
             "/System/Library/Fonts/AppleSDGothicNeoB.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         ]
     else:
-        candidates += [
+        fallback_candidates += [
             "C:/Windows/Fonts/malgun.ttf",
             "/System/Library/Fonts/AppleSDGothicNeo.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         ]
 
-    for path in candidates:
+    for path in pretendard_candidates + fallback_candidates:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
 
     return ImageFont.load_default()
 
 
-# =========================
-# 이미지 처리
-# =========================
 def load_image(uploaded_file) -> Image.Image:
     uploaded_file.seek(0)
     img = Image.open(uploaded_file)
@@ -78,9 +74,12 @@ def resize_contain(img: Image.Image, w: int, h: int, bg=WHITE) -> Image.Image:
     return canvas
 
 
+def spacer(height: int, bg=WHITE) -> Image.Image:
+    return Image.new("RGB", (PAGE_W, height), bg)
+
+
 def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int]) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
-
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
     cropped = st_cropper(
         img,
@@ -93,9 +92,6 @@ def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int
     return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
 
 
-# =========================
-# 텍스트 블록
-# =========================
 def text_width(draw, text, font):
     box = draw.textbbox((0, 0), text, font=font)
     return box[2] - box[0]
@@ -135,8 +131,8 @@ def build_description_block(
     weight_text: str,
     extra_text: str = "",
 ) -> Image.Image:
-    title_font = get_font(28, bold=True)
-    body_font = get_font(17, bold=False)
+    title_font = get_font(46, bold=True)
+    body_font = get_font(31, bold=False)
 
     lines_raw = []
     if item_text.strip():
@@ -156,7 +152,7 @@ def build_description_block(
     temp = Image.new("RGB", (PAGE_W, 100), DESC_BG)
     draw = ImageDraw.Draw(temp)
 
-    max_text_w = int(PAGE_W * 0.80)
+    max_text_w = int(PAGE_W * 0.83)
 
     wrapped_lines = []
     for raw in lines_raw:
@@ -165,27 +161,27 @@ def build_description_block(
         else:
             wrapped_lines.extend(wrap_text(draw, raw, body_font, max_text_w))
 
-    line_h = 26
-    top_pad = 70
-    title_gap = 55
-    bottom_pad = 65
+    line_h = 44
+    top_pad = 82
+    title_gap = 76
+    bottom_pad = 78
 
     height = top_pad + title_gap + len(wrapped_lines) * line_h + bottom_pad
-    if height < 280:
-        height = 280
+    if height < 430:
+        height = 430
 
     img = Image.new("RGB", (PAGE_W, height), DESC_BG)
     draw = ImageDraw.Draw(img)
 
     draw.text(
-        (40, 70),
+        (40, 82),
         product_name if product_name.strip() else "Product Name",
         font=title_font,
         fill=BLACK,
         anchor="la",
     )
 
-    y = 140
+    y = 182
     for line in wrapped_lines:
         draw.text((40, y), line, font=body_font, fill=BLACK, anchor="la")
         y += line_h
@@ -193,9 +189,6 @@ def build_description_block(
     return img
 
 
-# =========================
-# 페이지 합성
-# =========================
 def stack_blocks(blocks):
     total_h = sum(block.height for block in blocks)
     canvas = Image.new("RGB", (PAGE_W, total_h), WHITE)
@@ -219,10 +212,13 @@ def build_detail_page(
     extra_text,
     model_imgs,
     product_imgs,
+    postfix_box_img,
+    postfix_text_img,
 ):
     blocks = []
 
     blocks.append(resize_cover(main_img, PAGE_W, 980))
+    blocks.append(spacer(PHOTO_GAP))
 
     desc_block = build_description_block(
         product_name=product_name,
@@ -234,22 +230,28 @@ def build_detail_page(
         extra_text=extra_text,
     )
     blocks.append(desc_block)
+    blocks.append(spacer(PHOTO_GAP))
 
     for img in model_imgs:
         blocks.append(resize_cover(img, PAGE_W, 980))
+        blocks.append(spacer(PHOTO_GAP))
 
     for img in product_imgs:
         blocks.append(resize_contain(img, PAGE_W, 900, bg=WHITE))
+        blocks.append(spacer(PHOTO_GAP))
+
+    if postfix_box_img is not None:
+        blocks.append(resize_contain(postfix_box_img, PAGE_W, 900, bg=WHITE))
+        blocks.append(spacer(PHOTO_GAP))
+
+    if postfix_text_img is not None:
+        blocks.append(resize_contain(postfix_text_img, PAGE_W, 1450, bg=DESC_BG))
 
     return stack_blocks(blocks)
 
 
-# =========================
-# Streamlit UI
-# =========================
 st.set_page_config(page_title="Jewelry Detail Page Maker", layout="centered")
 st.title("Jewelry Detail Page Maker")
-
 
 st.markdown("### 1. Main 사진 1장 업로드")
 main_file = st.file_uploader(
@@ -323,6 +325,33 @@ if product_files:
             st.image(img, use_container_width=True)
 
 st.markdown("---")
+st.markdown("### 5. Postfix 이미지 업로드 (제품사진 뒤 순서대로)")
+postfix_box_file = st.file_uploader(
+    "1) 박스 사진 업로드",
+    type=["jpg", "jpeg", "png", "webp"],
+    accept_multiple_files=False,
+    key="postfix_box_file",
+)
+postfix_text_file = st.file_uploader(
+    "2) 글자 사진 업로드",
+    type=["jpg", "jpeg", "png", "webp"],
+    accept_multiple_files=False,
+    key="postfix_text_file",
+)
+
+postfix_box_img = None
+if postfix_box_file:
+    postfix_box_img = load_image(postfix_box_file)
+    postfix_box_img = crop_with_ui(postfix_box_img, key="postfix_box_crop", label="박스 사진", aspect_ratio=(43, 45))
+    st.image(postfix_box_img, caption="Postfix 1: 박스 사진", use_container_width=True)
+
+postfix_text_img = None
+if postfix_text_file:
+    postfix_text_img = load_image(postfix_text_file)
+    postfix_text_img = crop_with_ui(postfix_text_img, key="postfix_text_crop", label="글자 사진", aspect_ratio=(3, 8))
+    st.image(postfix_text_img, caption="Postfix 2: 글자 사진", use_container_width=True)
+
+st.markdown("---")
 
 if st.button("상세페이지 생성"):
     if main_img is None:
@@ -339,6 +368,8 @@ if st.button("상세페이지 생성"):
             extra_text=extra_text,
             model_imgs=model_imgs,
             product_imgs=product_imgs,
+            postfix_box_img=postfix_box_img,
+            postfix_text_img=postfix_text_img,
         )
 
         st.success("상세페이지 생성 완료")
