@@ -4,6 +4,11 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+try:
+    from streamlit_cropper import st_cropper
+except ImportError:
+    st_cropper = None
+
 
 # =========================
 # 기본 설정
@@ -11,7 +16,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 PAGE_W = 860
 WHITE = (255, 255, 255)
 BLACK = (20, 20, 20)
-TEXT_GRAY = (70, 70, 70)
 DESC_BG = (245, 245, 245)
 
 
@@ -75,6 +79,36 @@ def resize_contain(img: Image.Image, w: int, h: int, bg=WHITE) -> Image.Image:
     y = (h - nh) // 2
     canvas.paste(resized, (x, y))
     return canvas
+
+
+def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int]) -> Image.Image:
+    st.markdown(f"**{label} 크롭**")
+
+    if st_cropper is not None:
+        cropped = st_cropper(
+            img,
+            realtime_update=True,
+            box_color="#4CAF50",
+            aspect_ratio=aspect_ratio,
+            return_type="image",
+            key=key,
+        )
+        return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
+
+    st.caption("`streamlit-cropper`가 없어 슬라이더 방식 크롭으로 동작합니다.")
+    iw, ih = img.size
+    target_ratio = aspect_ratio[0] / aspect_ratio[1]
+
+    width = st.slider(f"{label} 너비", min_value=50, max_value=iw, value=iw, key=f"{key}_w")
+    height_default = min(ih, max(50, int(width / target_ratio)))
+    height = st.slider(f"{label} 높이", min_value=50, max_value=ih, value=height_default, key=f"{key}_h")
+
+    max_x = max(0, iw - width)
+    max_y = max(0, ih - height)
+    x = st.slider(f"{label} X", min_value=0, max_value=max_x, value=0, key=f"{key}_x")
+    y = st.slider(f"{label} Y", min_value=0, max_value=max_y, value=0, key=f"{key}_y")
+
+    return img.crop((x, y, x + width, y + height))
 
 
 # =========================
@@ -180,10 +214,6 @@ def build_description_block(
 # =========================
 # 페이지 합성
 # =========================
-def spacer(height: int, bg=WHITE):
-    return Image.new("RGB", (PAGE_W, height), bg)
-
-
 def stack_blocks(blocks):
     total_h = sum(block.height for block in blocks)
     canvas = Image.new("RGB", (PAGE_W, total_h), WHITE)
@@ -197,7 +227,7 @@ def stack_blocks(blocks):
 
 
 def build_detail_page(
-    main_file,
+    main_img,
     product_name,
     item_text,
     material_text,
@@ -205,17 +235,13 @@ def build_detail_page(
     thickness_text,
     weight_text,
     extra_text,
-    model_files,
-    product_files,
+    model_imgs,
+    product_imgs,
 ):
     blocks = []
 
-    # 1) Main 사진
-    if main_file is not None:
-        main_img = load_image(main_file)
-        blocks.append(resize_cover(main_img, PAGE_W, 980))
+    blocks.append(resize_cover(main_img, PAGE_W, 980))
 
-    # 2) 제품 설명
     desc_block = build_description_block(
         product_name=product_name,
         item_text=item_text,
@@ -227,17 +253,11 @@ def build_detail_page(
     )
     blocks.append(desc_block)
 
-    # 3) 모델컷들
-    if model_files:
-        for file in model_files:
-            img = load_image(file)
-            blocks.append(resize_cover(img, PAGE_W, 980))
+    for img in model_imgs:
+        blocks.append(resize_cover(img, PAGE_W, 980))
 
-    # 4) 제품컷들
-    if product_files:
-        for file in product_files:
-            img = load_image(file)
-            blocks.append(resize_contain(img, PAGE_W, 900, bg=WHITE))
+    for img in product_imgs:
+        blocks.append(resize_contain(img, PAGE_W, 900, bg=WHITE))
 
     return stack_blocks(blocks)
 
@@ -248,6 +268,9 @@ def build_detail_page(
 st.set_page_config(page_title="Jewelry Detail Page Maker", layout="centered")
 st.title("Jewelry Detail Page Maker")
 
+if st_cropper is None:
+    st.warning("선택 영역을 드래그하는 크롭 기능을 사용하려면 `pip install streamlit-cropper`를 설치하세요.")
+
 st.markdown("### 1. Main 사진 1장 업로드")
 main_file = st.file_uploader(
     "Main 사진 1장을 업로드하세요",
@@ -256,8 +279,11 @@ main_file = st.file_uploader(
     key="main_file",
 )
 
+main_img = None
 if main_file:
-    st.image(main_file, caption="Main 사진", use_container_width=True)
+    main_img = load_image(main_file)
+    main_img = crop_with_ui(main_img, key="main_crop", label="Main 사진", aspect_ratio=(43, 49))
+    st.image(main_img, caption="Main 사진(크롭 적용)", use_container_width=True)
 
 st.markdown("---")
 
@@ -280,12 +306,18 @@ model_files = st.file_uploader(
     key="model_files",
 )
 
+model_imgs = []
 if model_files:
     st.write(f"모델컷 업로드 수: {len(model_files)}")
-    cols = st.columns(3)
     for i, file in enumerate(model_files):
+        src = load_image(file)
+        cropped = crop_with_ui(src, key=f"model_crop_{i}", label=f"모델컷 {i + 1}", aspect_ratio=(43, 49))
+        model_imgs.append(cropped)
+
+    cols = st.columns(3)
+    for i, img in enumerate(model_imgs):
         with cols[i % 3]:
-            st.image(file, use_container_width=True)
+            st.image(img, use_container_width=True)
 
 st.markdown("---")
 
@@ -297,21 +329,27 @@ product_files = st.file_uploader(
     key="product_files",
 )
 
+product_imgs = []
 if product_files:
     st.write(f"제품컷 업로드 수: {len(product_files)}")
-    cols = st.columns(3)
     for i, file in enumerate(product_files):
+        src = load_image(file)
+        cropped = crop_with_ui(src, key=f"product_crop_{i}", label=f"제품컷 {i + 1}", aspect_ratio=(43, 45))
+        product_imgs.append(cropped)
+
+    cols = st.columns(3)
+    for i, img in enumerate(product_imgs):
         with cols[i % 3]:
-            st.image(file, use_container_width=True)
+            st.image(img, use_container_width=True)
 
 st.markdown("---")
 
 if st.button("상세페이지 생성"):
-    if main_file is None:
+    if main_img is None:
         st.error("Main 사진 1장은 반드시 필요합니다.")
     else:
         result = build_detail_page(
-            main_file=main_file,
+            main_img=main_img,
             product_name=product_name,
             item_text=item_text,
             material_text=material_text,
@@ -319,8 +357,8 @@ if st.button("상세페이지 생성"):
             thickness_text=thickness_text,
             weight_text=weight_text,
             extra_text=extra_text,
-            model_files=model_files,
-            product_files=product_files,
+            model_imgs=model_imgs,
+            product_imgs=product_imgs,
         )
 
         st.success("상세페이지 생성 완료")
