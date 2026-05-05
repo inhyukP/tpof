@@ -354,7 +354,12 @@ st.markdown("---")
 
 st.markdown("### 2. 제품 설명 입력")
 product_name = st.text_input("제품명", value="Wood Street_N")
-item_text = st.text_input("Item", value="Necklace")
+item_options = ["NECKLACE", "EARRING", "RING", "BRACELET", "ANKLET", "직접입력"]
+selected_item = st.selectbox("Item", options=item_options, index=0)
+if selected_item == "직접입력":
+    item_text = st.text_input("직접 입력 Item", value="")
+else:
+    item_text = selected_item
 material_text = st.text_input("Material", value="S925, Mother of pearl, Wood, Hematite")
 size_text = st.text_input("Size", value="38~43cm, 48~53cm")
 thickness_text = st.text_input("Thickness", value="4mm")
