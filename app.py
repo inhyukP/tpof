@@ -7,9 +7,9 @@ from streamlit_cropper import st_cropper
 
 
 PAGE_W = 860
-WHITE = (255, 255, 255)
+PAGE_BG = (255, 255, 255)
 BLACK = (20, 20, 20)
-DESC_BG = (245, 245, 245)
+PAGE_BG = (245, 245, 245)
 PHOTO_GAP = 32
 PRODUCT_CUT_H = 980
 POST_BOX_PATH = Path("assets/postfix_box.jpg")
@@ -67,7 +67,7 @@ def resize_cover(img: Image.Image, w: int, h: int) -> Image.Image:
     return resized.crop((left, top, left + w, top + h))
 
 
-def resize_contain(img: Image.Image, w: int, h: int, bg=WHITE) -> Image.Image:
+def resize_contain(img: Image.Image, w: int, h: int, bg=PAGE_BG) -> Image.Image:
     iw, ih = img.size
     scale = min(w / iw, h / ih)
     nw, nh = int(iw * scale), int(ih * scale)
@@ -80,7 +80,7 @@ def resize_contain(img: Image.Image, w: int, h: int, bg=WHITE) -> Image.Image:
     return canvas
 
 
-def spacer(height: int, bg=WHITE) -> Image.Image:
+def spacer(height: int, bg=PAGE_BG) -> Image.Image:
     return Image.new("RGB", (PAGE_W, height), bg)
 
 
@@ -155,7 +155,7 @@ def build_description_block(
         lines_raw.append("")
         lines_raw.extend(extra_text.splitlines())
 
-    temp = Image.new("RGB", (PAGE_W, 100), DESC_BG)
+    temp = Image.new("RGB", (PAGE_W, 100), PAGE_BG)
     draw = ImageDraw.Draw(temp)
 
     max_text_w = int(PAGE_W * 0.83)
@@ -176,7 +176,7 @@ def build_description_block(
     if height < 430:
         height = 430
 
-    img = Image.new("RGB", (PAGE_W, height), DESC_BG)
+    img = Image.new("RGB", (PAGE_W, height), PAGE_BG)
     draw = ImageDraw.Draw(img)
 
     draw.text(
@@ -233,7 +233,7 @@ def build_postfix_text_block() -> Image.Image:
         ]),
     ]
 
-    temp = Image.new("RGB", (PAGE_W, 100), DESC_BG)
+    temp = Image.new("RGB", (PAGE_W, 100), PAGE_BG)
     d = ImageDraw.Draw(temp)
     max_w = int(PAGE_W * 0.86)
 
@@ -250,7 +250,7 @@ def build_postfix_text_block() -> Image.Image:
         h += 72 if kind == "header" else 46 if kind == "body" else 30
     h += 60
 
-    img = Image.new("RGB", (PAGE_W, h), DESC_BG)
+    img = Image.new("RGB", (PAGE_W, h), PAGE_BG)
     d = ImageDraw.Draw(img)
     y = 80
     cx = PAGE_W // 2
@@ -270,7 +270,7 @@ def build_postfix_text_block() -> Image.Image:
 
 def stack_blocks(blocks):
     total_h = sum(block.height for block in blocks)
-    canvas = Image.new("RGB", (PAGE_W, total_h), WHITE)
+    canvas = Image.new("RGB", (PAGE_W, total_h), PAGE_BG)
 
     y = 0
     for block in blocks:
@@ -314,7 +314,7 @@ def build_detail_page(
         blocks.append(spacer(PHOTO_GAP))
 
     for img in product_imgs:
-        blocks.append(resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=WHITE))
+        blocks.append(resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=PAGE_BG))
         blocks.append(spacer(PHOTO_GAP))
 
     if POST_BOX_PATH.exists():
