@@ -401,7 +401,7 @@ if not korean_font_ready:
     st.stop()
 
 if not POST_BOX_PATH.exists():
-    st.warning("고정 박스 사진 파일이 없습니다: assets/post_box.jpg")
+    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box.jpg")
 
 
 if st.button("상세페이지 생성"):
