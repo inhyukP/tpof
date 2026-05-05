@@ -12,7 +12,7 @@ BLACK = (20, 20, 20)
 DESC_BG = (245, 245, 245)
 PHOTO_GAP = 32
 PRODUCT_CUT_H = 900
-POST_BOX_PATH = Path("assets/post_box.jpg")
+POST_BOX_PATH = Path("assets/postfix_box.jpg")
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
 
