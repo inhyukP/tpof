@@ -11,37 +11,42 @@ WHITE = (255, 255, 255)
 BLACK = (20, 20, 20)
 DESC_BG = (245, 245, 245)
 PHOTO_GAP = 64
-FIXED_POSTFIX_BOX_PATH = Path("assets/postfix_box.jpg")
+PRODUCT_CUT_H = 900
+POST_BOX_PATH = Path("assets/post_box.jpg")
+KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
+
+
+def get_font_candidates(bold: bool = False) -> list[Path]:
+    pretendard_name = "Pretendard-Bold" if bold else "Pretendard-Regular"
+    return [
+        Path(f"{pretendard_name}.otf"),
+        Path(f"{pretendard_name}.ttf"),
+        Path("fonts") / f"{pretendard_name}.otf",
+        Path("fonts") / f"{pretendard_name}.ttf",
+        Path("/usr/share/fonts/truetype/pretendard") / f"{pretendard_name}.ttf",
+        Path("/usr/share/fonts/opentype/pretendard") / f"{pretendard_name}.otf",
+        Path("C:/Windows/Fonts/malgunbd.ttf" if bold else "C:/Windows/Fonts/malgun.ttf"),
+        Path("/System/Library/Fonts/AppleSDGothicNeoB.ttc" if bold else "/System/Library/Fonts/AppleSDGothicNeo.ttc"),
+        Path("/Library/Fonts/AppleGothic.ttf"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf"),
+        Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf" if bold else "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+    ]
+
+
+def get_font_path(bold: bool = False) -> Path | None:
+    for path in get_font_candidates(bold):
+        if path.exists():
+            return path
+    return None
 
 
 def get_font(size: int, bold: bool = False):
-    pretendard_candidates = [
-        "./Pretendard-Bold.otf" if bold else "./Pretendard-Regular.otf",
-        "./fonts/Pretendard-Bold.otf" if bold else "./fonts/Pretendard-Regular.otf",
-        "/usr/share/fonts/truetype/pretendard/Pretendard-Bold.ttf" if bold else "/usr/share/fonts/truetype/pretendard/Pretendard-Regular.ttf",
-    ]
-
-    fallback_candidates = []
-    if bold:
-        fallback_candidates += [
-            "C:/Windows/Fonts/malgunbd.ttf",
-            "/System/Library/Fonts/AppleSDGothicNeoB.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-        ]
-    else:
-        fallback_candidates += [
-            "C:/Windows/Fonts/malgun.ttf",
-            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        ]
-
-    for path in pretendard_candidates + fallback_candidates:
-        if Path(path).exists():
-            return ImageFont.truetype(path, size)
-
-    return ImageFont.load_default()
+    font_path = get_font_path(bold) or get_font_path(False)
+    if font_path is None:
+        raise FileNotFoundError(KOREAN_FONT_NOTICE)
+    return ImageFont.truetype(str(font_path), size)
 
 
 def load_image(uploaded_file) -> Image.Image:
@@ -190,8 +195,6 @@ def build_description_block(
     return img
 
 
-
-
 def build_postfix_text_block() -> Image.Image:
     title_font = get_font(56, bold=True)
     body_font = get_font(35, bold=False)
@@ -255,6 +258,7 @@ def build_postfix_text_block() -> Image.Image:
 
     return img
 
+
 def stack_blocks(blocks):
     total_h = sum(block.height for block in blocks)
     canvas = Image.new("RGB", (PAGE_W, total_h), WHITE)
@@ -301,13 +305,13 @@ def build_detail_page(
         blocks.append(spacer(PHOTO_GAP))
 
     for img in product_imgs:
-        blocks.append(resize_contain(img, PAGE_W, 900, bg=WHITE))
+        blocks.append(resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=WHITE))
         blocks.append(spacer(PHOTO_GAP))
 
-    if FIXED_POSTFIX_BOX_PATH.exists():
-        fixed_box = Image.open(FIXED_POSTFIX_BOX_PATH)
-        fixed_box = ImageOps.exif_transpose(fixed_box).convert("RGB")
-        blocks.append(resize_contain(fixed_box, PAGE_W, 900, bg=WHITE))
+    if POST_BOX_PATH.exists():
+        post_box = Image.open(POST_BOX_PATH)
+        post_box = ImageOps.exif_transpose(post_box).convert("RGB")
+        blocks.append(resize_contain(post_box, PAGE_W, PRODUCT_CUT_H, bg=WHITE))
         blocks.append(spacer(PHOTO_GAP))
 
     blocks.append(build_postfix_text_block())
@@ -391,8 +395,13 @@ if product_files:
 
 st.markdown("---")
 
-if not FIXED_POSTFIX_BOX_PATH.exists():
-    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box.jpg")
+korean_font_ready = get_font_path(False) is not None or get_font_path(True) is not None
+if not korean_font_ready:
+    st.error(KOREAN_FONT_NOTICE)
+    st.stop()
+
+if not POST_BOX_PATH.exists():
+    st.warning("고정 박스 사진 파일이 없습니다: assets/post_box.jpg")
 
 
 if st.button("상세페이지 생성"):
