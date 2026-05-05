@@ -11,7 +11,7 @@ WHITE = (255, 255, 255)
 BLACK = (20, 20, 20)
 DESC_BG = (245, 245, 245)
 PHOTO_GAP = 32
-PRODUCT_CUT_H = 900
+PRODUCT_CUT_H = 980
 POST_BOX_PATH = Path("assets/postfix_box.jpg")
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
@@ -311,7 +311,7 @@ def build_detail_page(
     if POST_BOX_PATH.exists():
         post_box = Image.open(POST_BOX_PATH)
         post_box = ImageOps.exif_transpose(post_box).convert("RGB")
-        blocks.append(resize_contain(post_box, PAGE_W, PRODUCT_CUT_H, bg=WHITE))
+        blocks.append(resize_cover(post_box, PAGE_W, PRODUCT_CUT_H))
         blocks.append(spacer(PHOTO_GAP))
 
     blocks.append(build_postfix_text_block())
