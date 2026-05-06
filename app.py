@@ -7,7 +7,6 @@ from streamlit_cropper import st_cropper
 
 
 PAGE_W = 860
-PAGE_BG = (255, 255, 255)
 BLACK = (20, 20, 20)
 PAGE_BG = (245, 245, 245)
 PHOTO_GAP = 10
@@ -274,7 +273,7 @@ def build_postfix_text_block() -> Image.Image:
             "상품 제작은 주문 확인 후 시작되며 검수 후 출고됩니다.",
         ]),
         ("EXCHANGE / RETURN", [
-            "모든 교환 및 환불 문의는 카카오톡 채널 @thepartof 또는 홈페이지
+            "모든 교환 및 환불 문의는 카카오톡 채널 @thepartof 또는 홈페이지"
             "Q&A 게시판을 통해 접수해 주시기 바랍니다.",
             "더파트오브의 모든 제품은 엄격하고 꼼꼼한 검수 과정을 거쳐 출고됩니다.",
             "혹시라도 제품에 결함이 있는 경우에는 수령 후 24시간 이내에 카카오톡  상담이나 게시판을 통해 사진과 함께 접수 부탁드립니다.",
