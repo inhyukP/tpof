@@ -166,7 +166,6 @@ def get_description_lines(
     if weight_text.strip():
         lines.append(f"Weight: {weight_text}")
     if extra_text.strip():
-        lines.append("")
         lines.extend(extra_text.splitlines())
 
     return lines
