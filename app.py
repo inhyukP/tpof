@@ -146,6 +146,52 @@ def wrap_text(draw, text: str, font, max_width: int):
     return lines
 
 
+def get_description_lines(
+    item_text: str,
+    material_text: str,
+    size_text: str,
+    thickness_text: str,
+    weight_text: str,
+    extra_text: str = "",
+) -> list[str]:
+    lines = []
+    if item_text.strip():
+        lines.append(f"Item: {item_text}")
+    if material_text.strip():
+        lines.append(f"Material: {material_text}")
+    if size_text.strip():
+        lines.append(f"Size: {size_text}")
+    if thickness_text.strip():
+        lines.append(f"Thickness: {thickness_text}")
+    if weight_text.strip():
+        lines.append(f"Weight: {weight_text}")
+    if extra_text.strip():
+        lines.append("")
+        lines.extend(extra_text.splitlines())
+
+    return lines
+
+
+def has_description_content(
+    product_name: str,
+    item_text: str,
+    material_text: str,
+    size_text: str,
+    thickness_text: str,
+    weight_text: str,
+    extra_text: str = "",
+) -> bool:
+    return bool(
+        product_name.strip()
+        or item_text.strip()
+        or material_text.strip()
+        or size_text.strip()
+        or thickness_text.strip()
+        or weight_text.strip()
+        or extra_text.strip()
+    )
+
+
 def build_description_block(
     product_name: str,
     item_text: str,
@@ -158,20 +204,14 @@ def build_description_block(
     title_font = get_font(46, bold=True)
     body_font = get_font(28, bold=False)
 
-    lines_raw = []
-    if item_text.strip():
-        lines_raw.append(f"Item: {item_text}")
-    if material_text.strip():
-        lines_raw.append(f"Material: {material_text}")
-    if size_text.strip():
-        lines_raw.append(f"Size: {size_text}")
-    if thickness_text.strip():
-        lines_raw.append(f"Thickness: {thickness_text}")
-    if weight_text.strip():
-        lines_raw.append(f"Weight: {weight_text}")
-    if extra_text.strip():
-        lines_raw.append("")
-        lines_raw.extend(extra_text.splitlines())
+    lines_raw = get_description_lines(
+        item_text=item_text,
+        material_text=material_text,
+        size_text=size_text,
+        thickness_text=thickness_text,
+        weight_text=weight_text,
+        extra_text=extra_text,
+    )
 
     temp = Image.new("RGB", (PAGE_W, 100), PAGE_BG)
     draw = ImageDraw.Draw(temp)
@@ -189,23 +229,26 @@ def build_description_block(
     top_pad = 82
     title_gap = 76
     bottom_pad = 78
+    has_title = bool(product_name.strip())
+    text_start_y = top_pad + title_gap if has_title else top_pad
 
-    height = top_pad + title_gap + len(wrapped_lines) * line_h + bottom_pad
+    height = text_start_y + len(wrapped_lines) * line_h + bottom_pad
     if height < 430:
         height = 430
 
     img = Image.new("RGB", (PAGE_W, height), PAGE_BG)
     draw = ImageDraw.Draw(img)
 
-    draw.text(
-        (40, 82),
-        product_name if product_name.strip() else "Product Name",
-        font=title_font,
-        fill=BLACK,
-        anchor="la",
-    )
+    if has_title:
+        draw.text(
+            (40, 82),
+            product_name,
+            font=title_font,
+            fill=BLACK,
+            anchor="la",
+        )
 
-    y = 182
+    y = text_start_y
     for line in wrapped_lines:
         draw.text((40, y), line, font=body_font, fill=BLACK, anchor="la")
         y += line_h
@@ -316,7 +359,7 @@ def build_detail_page(
     blocks.append(add_bg_border(main_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
     blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
-    desc_block = build_description_block(
+    if has_description_content(
         product_name=product_name,
         item_text=item_text,
         material_text=material_text,
@@ -324,9 +367,18 @@ def build_detail_page(
         thickness_text=thickness_text,
         weight_text=weight_text,
         extra_text=extra_text,
-    )
-    blocks.append(desc_block)
-    blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
+    ):
+        desc_block = build_description_block(
+            product_name=product_name,
+            item_text=item_text,
+            material_text=material_text,
+            size_text=size_text,
+            thickness_text=thickness_text,
+            weight_text=weight_text,
+            extra_text=extra_text,
+        )
+        blocks.append(desc_block)
+        blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
     for img in model_imgs:
         model_block = resize_cover(img, PAGE_W, 980)
