@@ -11,8 +11,9 @@ BLACK = (20, 20, 20)
 PAGE_BG = (245, 245, 245)
 PHOTO_GAP = 10
 PHOTO_BORDER = 20
+MODEL_CUT_H = 1056
 PRODUCT_CUT_H = 980
-POST_BOX_PATH = Path("assets/postfix_box.jpg")
+POST_BOX_PATH = Path("assets/postfix_box_lot.jpg")
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
 
@@ -101,7 +102,7 @@ def add_bg_border(block: Image.Image, border: int, bg=PAGE_BG, fit_mode: str = "
     return canvas
 
 
-def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int]) -> Image.Image:
+def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int] | None) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
     cropped = st_cropper(
@@ -149,6 +150,7 @@ def get_description_lines(
     item_text: str,
     material_text: str,
     size_text: str,
+    pendant_text: str,
     thickness_text: str,
     weight_text: str,
     extra_text: str = "",
@@ -160,6 +162,8 @@ def get_description_lines(
         lines.append(f"Material: {material_text}")
     if size_text.strip():
         lines.append(f"Size: {size_text}")
+    if pendant_text.strip():
+        lines.append(f"Size: {pendant_text}")
     if thickness_text.strip():
         lines.append(f"Thickness: {thickness_text}")
     if weight_text.strip():
@@ -175,6 +179,7 @@ def has_description_content(
     item_text: str,
     material_text: str,
     size_text: str,
+    pendat_text: str,
     thickness_text: str,
     weight_text: str,
     extra_text: str = "",
@@ -184,6 +189,7 @@ def has_description_content(
         or item_text.strip()
         or material_text.strip()
         or size_text.strip()
+        or pendant_text.strip()
         or thickness_text.strip()
         or weight_text.strip()
         or extra_text.strip()
@@ -195,6 +201,7 @@ def build_description_block(
     item_text: str,
     material_text: str,
     size_text: str,
+    pendant_text: str,
     thickness_text: str,
     weight_text: str,
     extra_text: str = "",
@@ -206,6 +213,7 @@ def build_description_block(
         item_text=item_text,
         material_text=material_text,
         size_text=size_text,
+        pendant_text=pendant_text,
         thickness_text=thickness_text,
         weight_text=weight_text,
         extra_text=extra_text,
@@ -384,7 +392,7 @@ def build_detail_page(
         blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
     for img in model_imgs:
-        model_block = resize_cover(img, PAGE_W, 980)
+        model_block = resize_cover(img, PAGE_W, MODEL_CUT_H)
         blocks.append(add_bg_border(model_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
         blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
@@ -436,6 +444,7 @@ else:
     item_text = selected_item
 material_text = st.text_input("Material", value="S925")
 size_text = st.text_input("Size", value="")
+pendant_text = st.text_input("Pendant", value="")
 thickness_text = st.text_input("Thickness", value="")
 weight_text = st.text_input("Weight", value="")
 extra_text = st.text_area("추가 설명(선택)", value="")
@@ -455,7 +464,7 @@ if model_files:
     st.write(f"모델컷 업로드 수: {len(model_files)}")
     for i, file in enumerate(model_files):
         src = load_image(file)
-        cropped = crop_with_ui(src, key=f"model_crop_{i}", label=f"모델컷 {i + 1}", aspect_ratio=(43, 49))
+        cropped = crop_with_ui(src, key=f"model_crop_{i}", label=f"모델컷 {i + 1}", aspect_ratio=(211, 259))
         model_imgs.append(cropped)
 
     cols = st.columns(3)
@@ -478,7 +487,7 @@ if product_files:
     st.write(f"제품컷 업로드 수: {len(product_files)}")
     for i, file in enumerate(product_files):
         src = load_image(file)
-        cropped = crop_with_ui(src, key=f"product_crop_{i}", label=f"제품컷 {i + 1}", aspect_ratio=(43, 45))
+        cropped = crop_with_ui(src, key=f"product_crop_{i}", label=f"제품컷 {i + 1}", aspect_ratio=None)
         product_imgs.append(cropped)
 
     cols = st.columns(3)
@@ -494,7 +503,7 @@ if not korean_font_ready:
     st.stop()
 
 if not POST_BOX_PATH.exists():
-    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box.jpg")
+    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box_lot.jpg")
 
 
 if st.button("상세페이지 생성"):
@@ -507,6 +516,7 @@ if st.button("상세페이지 생성"):
             item_text=item_text,
             material_text=material_text,
             size_text=size_text,
+            pendant_text=pendant_text,
             thickness_text=thickness_text,
             weight_text=weight_text,
             extra_text=extra_text,
