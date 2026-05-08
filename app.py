@@ -179,7 +179,7 @@ def has_description_content(
     item_text: str,
     material_text: str,
     size_text: str,
-    pendat_text: str,
+    pendant_text: str,
     thickness_text: str,
     weight_text: str,
     extra_text: str = "",
