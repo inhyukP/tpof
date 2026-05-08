@@ -13,7 +13,7 @@ PHOTO_GAP = 10
 PHOTO_BORDER = 20
 MODEL_CUT_H = 1056
 PRODUCT_CUT_H = 980
-POST_BOX_PATH = Path("assets/postfix_box_lot.jpg")
+POST_BOX_PATH = Path("assets/postfix_box_lot.JPG")
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
 
@@ -503,7 +503,7 @@ if not korean_font_ready:
     st.stop()
 
 if not POST_BOX_PATH.exists():
-    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box_lot.jpg")
+    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box_lot.JPG")
 
 
 if st.button("상세페이지 생성"):
