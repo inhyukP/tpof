@@ -163,7 +163,7 @@ def get_description_lines(
     if size_text.strip():
         lines.append(f"Size: {size_text}")
     if pendant_text.strip():
-        lines.append(f"Size: {pendant_text}")
+        lines.append(f"Pendant: {pendant_text}")
     if thickness_text.strip():
         lines.append(f"Thickness: {thickness_text}")
     if weight_text.strip():
