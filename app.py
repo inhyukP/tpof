@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ MODEL_CUT_H = 1056
 PRODUCT_CUT_H = 980
 POST_BOX_PATH = Path("assets/postfix_box_lot.JPG")
 CONFIG_VERSION = 1
+ITEM_OPTIONS = ["NECKLACE", "EARRING", "RING", "BRACELET", "ANKLET", "직접입력"]
 PRODUCT_CROPPER_PATH = Path(__file__).parent / "components" / "cropperjs"
 product_cropper_component = components.declare_component(
     "product_cropper",
@@ -188,6 +190,34 @@ def load_detail_config(uploaded_file) -> dict:
     return json.loads(uploaded_file.read().decode("utf-8"))
 
 
+def get_uploaded_config_signature(uploaded_file) -> str:
+    uploaded_file.seek(0)
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+    digest = hashlib.sha256(data).hexdigest()
+    return f"{uploaded_file.name}:{len(data)}:{digest}"
+
+
+def apply_loaded_config_to_session_state(config: dict) -> None:
+    fields = config.get("fields", {})
+    st.session_state["product_name_input"] = fields.get("product_name", "")
+
+    loaded_item = fields.get("item_text", "NECKLACE")
+    if loaded_item in ITEM_OPTIONS:
+        st.session_state["selected_item_input"] = loaded_item
+        st.session_state["custom_item_input"] = ""
+    else:
+        st.session_state["selected_item_input"] = "직접입력"
+        st.session_state["custom_item_input"] = loaded_item
+
+    st.session_state["material_text_input"] = fields.get("material_text", "S925")
+    st.session_state["size_text_input"] = fields.get("size_text", "")
+    st.session_state["pendant_text_input"] = fields.get("pendant_text", "")
+    st.session_state["thickness_text_input"] = fields.get("thickness_text", "")
+    st.session_state["weight_text_input"] = fields.get("weight_text", "")
+    st.session_state["extra_text_input"] = fields.get("extra_text", "")
+
+
 def crop_with_ui(
     img: Image.Image,
     key: str,
@@ -223,6 +253,20 @@ def crop_with_ui(
         key=cropper_key,
     )
     return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
+
+
+def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
+    st.markdown(f"**{label} 크롭 / 회전**")
+    st.caption("크롭 박스를 조정하거나 초록 원형 핸들을 드래그해서 회전한 뒤 '크롭 적용'을 눌러주세요")
+
+    result = product_cropper_component(
+        imageData=image_to_data_url(img),
+        key=key,
+        default=None,
+    )
+    if isinstance(result, dict) and result.get("imageData"):
+        return image_from_data_url(result["imageData"])
+    return img
 
 
 def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
@@ -555,14 +599,21 @@ config_file = st.file_uploader(
     key="config_file",
 )
 
-loaded_config = {}
+loaded_config = st.session_state.get("loaded_config", {})
 if config_file:
     try:
+        config_signature = get_uploaded_config_signature(config_file)
         loaded_config = load_detail_config(config_file)
+        st.session_state["loaded_config"] = loaded_config
+        if st.session_state.get("loaded_config_signature") != config_signature:
+            apply_loaded_config_to_session_state(loaded_config)
+            st.session_state["loaded_config_signature"] = config_signature
         st.success(
             "Config를 불러왔습니다. 아래 값들을 수정한 뒤 다시 저장하거나 상세페이지를 생성할 수 있습니다."
         )
     except Exception as exc:
+        loaded_config = {}
+        st.session_state["loaded_config"] = loaded_config
         st.error(f"Config를 불러오지 못했습니다: {exc}")
 
 loaded_fields = loaded_config.get("fields", {})
@@ -592,26 +643,58 @@ elif main_img:
 st.markdown("---")
 
 st.markdown("### 2. 제품 설명 입력, 빈칸으로 두면 안나옴, 없는 항목은 추가 설명에서 적을 것")
-product_name = st.text_input("제품명", value=loaded_fields.get("product_name", ""))
-item_options = ["NECKLACE", "EARRING", "RING", "BRACELET", "ANKLET", "직접입력"]
+product_name = st.text_input(
+    "제품명",
+    value=loaded_fields.get("product_name", ""),
+    key="product_name_input",
+)
 loaded_item = loaded_fields.get("item_text", "NECKLACE")
 item_index = (
-    item_options.index(loaded_item)
-    if loaded_item in item_options
-    else item_options.index("직접입력")
+    ITEM_OPTIONS.index(loaded_item)
+    if loaded_item in ITEM_OPTIONS
+    else ITEM_OPTIONS.index("직접입력")
 )
-selected_item = st.selectbox("Item", options=item_options, index=item_index)
+selected_item = st.selectbox(
+    "Item",
+    options=ITEM_OPTIONS,
+    index=item_index,
+    key="selected_item_input",
+)
 if selected_item == "직접입력":
-    custom_item_default = loaded_item if loaded_item not in item_options else ""
-    item_text = st.text_input("직접 입력 Item", value=custom_item_default)
+    custom_item_default = loaded_item if loaded_item not in ITEM_OPTIONS else ""
+    item_text = st.text_input(
+        "직접 입력 Item",
+        value=custom_item_default,
+        key="custom_item_input",
+    )
 else:
     item_text = selected_item
-material_text = st.text_input("Material", value=loaded_fields.get("material_text", "S925"))
-size_text = st.text_input("Size", value=loaded_fields.get("size_text", ""))
-pendant_text = st.text_input("Pendant", value=loaded_fields.get("pendant_text", ""))
-thickness_text = st.text_input("Thickness", value=loaded_fields.get("thickness_text", ""))
-weight_text = st.text_input("Weight", value=loaded_fields.get("weight_text", ""))
-extra_text = st.text_area("추가 설명(선택)", value=loaded_fields.get("extra_text", ""))
+material_text = st.text_input(
+    "Material",
+    value=loaded_fields.get("material_text", "S925"),
+    key="material_text_input",
+)
+size_text = st.text_input("Size", value=loaded_fields.get("size_text", ""), key="size_text_input")
+pendant_text = st.text_input(
+    "Pendant",
+    value=loaded_fields.get("pendant_text", ""),
+    key="pendant_text_input",
+)
+thickness_text = st.text_input(
+    "Thickness",
+    value=loaded_fields.get("thickness_text", ""),
+    key="thickness_text_input",
+)
+weight_text = st.text_input(
+    "Weight",
+    value=loaded_fields.get("weight_text", ""),
+    key="weight_text_input",
+)
+extra_text = st.text_area(
+    "추가 설명(선택)",
+    value=loaded_fields.get("extra_text", ""),
+    key="extra_text_input",
+)
 
 st.markdown("---")
 
