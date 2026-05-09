@@ -226,15 +226,47 @@ def crop_with_ui(
 ) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
+
+    working_img = img
+    cropper_key = key
+    if allow_rotation:
+        rotation = st.slider(
+            f"{label} 회전",
+            min_value=-180.0,
+            max_value=180.0,
+            value=0.0,
+            step=0.1,
+            format="%.1f°",
+            help="양수는 시계 방향, 음수는 반시계 방향으로 회전합니다.",
+            key=f"{key}_rotation",
+        )
+        working_img = rotate_image_clockwise(img, rotation)
+        rotation_key = f"{rotation:.1f}".replace("-", "m").replace(".", "_")
+        cropper_key = f"{key}_rotation_{rotation_key}"
+
     cropped = st_cropper(
-        img,
+        working_img,
         realtime_update=True,
         box_color="#4CAF50",
         aspect_ratio=aspect_ratio,
         return_type="image",
-        key=key,
+        key=cropper_key,
     )
-    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
+    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
+
+
+def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
+    st.markdown(f"**{label} 크롭 / 회전**")
+    st.caption("크롭 박스를 조정하거나 초록 원형 핸들을 드래그해서 회전한 뒤 '크롭 적용'을 눌러주세요")
+
+    result = product_cropper_component(
+        imageData=image_to_data_url(img),
+        key=key,
+        default=None,
+    )
+    if isinstance(result, dict) and result.get("imageData"):
+        return image_from_data_url(result["imageData"])
+    return img
 
 
 def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
