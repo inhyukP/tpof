@@ -102,18 +102,75 @@ def add_bg_border(block: Image.Image, border: int, bg=PAGE_BG, fit_mode: str = "
     return canvas
 
 
-def crop_with_ui(img: Image.Image, key: str, label: str, aspect_ratio: tuple[int, int] | None) -> Image.Image:
+def build_product_image_block(
+    img: Image.Image,
+    border: int = PHOTO_BORDER,
+    max_h: int = PRODUCT_CUT_H,
+    bg=PAGE_BG,
+) -> Image.Image:
+    inner_w = max(1, PAGE_W - (border * 2))
+    inner_max_h = max(1, max_h - (border * 2))
+    iw, ih = img.size
+    scale = min(inner_w / iw, inner_max_h / ih)
+    nw, nh = int(iw * scale), int(ih * scale)
+    resized = img.resize((nw, nh), Image.LANCZOS)
+
+    block_h = nh + (border * 2)
+    canvas = Image.new("RGB", (PAGE_W, block_h), bg)
+    x = (PAGE_W - nw) // 2
+    canvas.paste(resized, (x, border))
+    return canvas
+
+
+def rotate_image_clockwise(img: Image.Image, degrees: float, bg=PAGE_BG) -> Image.Image:
+    if degrees % 360 == 0:
+        return img
+
+    rotated = img.rotate(
+        -degrees,
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
+        fillcolor=bg,
+    )
+    return rotated.convert("RGB")
+
+
+def crop_with_ui(
+    img: Image.Image,
+    key: str,
+    label: str,
+    aspect_ratio: tuple[int, int] | None,
+    allow_rotation: bool = False,
+) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
+
+    working_img = img
+    cropper_key = key
+    if allow_rotation:
+        rotation = st.slider(
+            f"{label} 회전",
+            min_value=-180.0,
+            max_value=180.0,
+            value=0.0,
+            step=0.1,
+            format="%.1f°",
+            help="양수는 시계 방향, 음수는 반시계 방향으로 회전합니다.",
+            key=f"{key}_rotation",
+        )
+        working_img = rotate_image_clockwise(img, rotation)
+        rotation_key = f"{rotation:.1f}".replace("-", "m").replace(".", "_")
+        cropper_key = f"{key}_rotation_{rotation_key}"
+
     cropped = st_cropper(
-        img,
+        working_img,
         realtime_update=True,
         box_color="#4CAF50",
         aspect_ratio=aspect_ratio,
         return_type="image",
-        key=key,
+        key=cropper_key,
     )
-    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else img
+    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
 
 
 def text_width(draw, text, font):
@@ -399,13 +456,16 @@ def build_detail_page(
         blocks.append(add_bg_border(model_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="cover"))
         blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
-
     for img in product_imgs:
-        product_block = resize_contain(img, PAGE_W, PRODUCT_CUT_H, bg=PAGE_BG)
-        blocks.append(add_bg_border(product_block, PHOTO_BORDER, bg=PAGE_BG, fit_mode="contain"))
+        product_block = build_product_image_block(
+            img,
+            border=PHOTO_BORDER,
+            max_h=PRODUCT_CUT_H,
+            bg=PAGE_BG,
+        )
+        blocks.append(product_block)
         blocks.append(spacer(PHOTO_GAP, bg=PAGE_BG))
 
-    
     if POST_BOX_PATH.exists():
         post_box = Image.open(POST_BOX_PATH)
         post_box = ImageOps.exif_transpose(post_box).convert("RGB")
@@ -490,7 +550,13 @@ if product_files:
     st.write(f"제품컷 업로드 수: {len(product_files)}")
     for i, file in enumerate(product_files):
         src = load_image(file)
-        cropped = crop_with_ui(src, key=f"product_crop_{i}", label=f"제품컷 {i + 1}", aspect_ratio=None)
+        cropped = crop_with_ui(
+            src,
+            key=f"product_crop_{i}",
+            label=f"제품컷 {i + 1}",
+            aspect_ratio=None,
+            allow_rotation=True,
+        )
         product_imgs.append(cropped)
 
     cols = st.columns(3)
