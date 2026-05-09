@@ -653,14 +653,21 @@ if main_file:
     main_img = crop_with_ui(main_img, key="main_crop", label="Main 사진", aspect_ratio=(43, 49))
     st.image(main_img, caption="Main 사진(크롭 적용)", use_container_width=True)
 elif main_img:
-    st.info("Config에서 불러온 Main 사진도 아래에서 다시 크롭할 수 있습니다.")
-    main_img = crop_with_ui(
-        main_img,
-        key=f"main_config_crop_{config_key_suffix}",
-        label="Main 사진(config)",
-        aspect_ratio=(43, 49),
-    )
-    st.image(main_img, caption="Main 사진(config 크롭 적용)", use_container_width=True)
+    st.info("Config에 저장된 Main 사진의 기존 크롭 결과를 그대로 불러왔습니다.")
+    if st.checkbox(
+        "Main 사진(config)을 다시 크롭하기",
+        value=False,
+        key=f"main_config_recrop_{config_key_suffix}",
+    ):
+        main_img = crop_with_ui(
+            main_img,
+            key=f"main_config_crop_{config_key_suffix}",
+            label="Main 사진(config)",
+            aspect_ratio=(43, 49),
+        )
+        st.image(main_img, caption="Main 사진(config 다시 크롭 적용)", use_container_width=True)
+    else:
+        st.image(main_img, caption="Main 사진(config 기존 크롭 유지)", use_container_width=True)
 
 st.markdown("---")
 
@@ -743,17 +750,22 @@ if model_files:
         model_imgs.append(cropped)
 elif model_imgs:
     st.write(f"모델컷 config 불러온 수: {len(model_imgs)}")
-    st.info("Config에서 불러온 모델컷도 각각 다시 크롭할 수 있습니다.")
-    edited_model_imgs = []
-    for i, img in enumerate(model_imgs):
-        cropped = crop_with_ui(
-            img,
-            key=f"model_config_crop_{config_key_suffix}_{i}",
-            label=f"모델컷 {i + 1}(config)",
-            aspect_ratio=(211, 259),
-        )
-        edited_model_imgs.append(cropped)
-    model_imgs = edited_model_imgs
+    st.info("Config에 저장된 모델컷의 기존 크롭 결과를 그대로 불러왔습니다.")
+    if st.checkbox(
+        "모델컷(config)을 다시 크롭하기",
+        value=False,
+        key=f"model_config_recrop_{config_key_suffix}",
+    ):
+        edited_model_imgs = []
+        for i, img in enumerate(model_imgs):
+            cropped = crop_with_ui(
+                img,
+                key=f"model_config_crop_{config_key_suffix}_{i}",
+                label=f"모델컷 {i + 1}(config)",
+                aspect_ratio=(211, 259),
+            )
+            edited_model_imgs.append(cropped)
+        model_imgs = edited_model_imgs
 
 if model_imgs:
     cols = st.columns(3)
@@ -785,16 +797,21 @@ if product_files:
         product_imgs.append(cropped)
 elif product_imgs:
     st.write(f"제품컷 config 불러온 수: {len(product_imgs)}")
-    st.info("Config에서 불러온 제품컷도 각각 다시 크롭/회전할 수 있습니다.")
-    edited_product_imgs = []
-    for i, img in enumerate(product_imgs):
-        cropped = crop_product_with_rotation_ui(
-            img,
-            key=f"product_config_crop_{config_key_suffix}_{i}",
-            label=f"제품컷 {i + 1}(config)",
-        )
-        edited_product_imgs.append(cropped)
-    product_imgs = edited_product_imgs
+    st.info("Config에 저장된 제품컷의 기존 크롭/회전 결과를 그대로 불러왔습니다.")
+    if st.checkbox(
+        "제품컷(config)을 다시 크롭/회전하기",
+        value=False,
+        key=f"product_config_recrop_{config_key_suffix}",
+    ):
+        edited_product_imgs = []
+        for i, img in enumerate(product_imgs):
+            cropped = crop_product_with_rotation_ui(
+                img,
+                key=f"product_config_crop_{config_key_suffix}_{i}",
+                label=f"제품컷 {i + 1}(config)",
+            )
+            edited_product_imgs.append(cropped)
+        product_imgs = edited_product_imgs
 
 if product_imgs:
     cols = st.columns(3)
