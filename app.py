@@ -185,6 +185,19 @@ def config_to_bytes(config: dict) -> bytes:
     return json.dumps(config, ensure_ascii=False).encode("utf-8")
 
 
+def normalize_download_filename(
+    filename: str,
+    default: str = "detail_page_config.json",
+    extension: str = ".json",
+) -> str:
+    cleaned = Path(filename.strip()).name if filename.strip() else default
+    if cleaned in {"", ".", ".."}:
+        cleaned = default
+    if not cleaned.lower().endswith(extension):
+        cleaned = f"{cleaned}{extension}"
+    return cleaned
+
+
 def load_detail_config(uploaded_file) -> dict:
     uploaded_file.seek(0)
     return json.loads(uploaded_file.read().decode("utf-8"))
@@ -218,11 +231,24 @@ def apply_loaded_config_to_session_state(config: dict) -> None:
     st.session_state["extra_text_input"] = fields.get("extra_text", "")
 
 
+def rotate_image_clockwise(img: Image.Image, degrees: float, bg=PAGE_BG) -> Image.Image:
+    if degrees % 360 == 0:
+        return img
+
+    return img.rotate(
+        -degrees,
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
+        fillcolor=bg,
+    ).convert("RGB")
+
+
 def crop_with_ui(
     img: Image.Image,
     key: str,
     label: str,
     aspect_ratio: tuple[int, int] | None,
+    allow_rotation: bool = False,
 ) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
@@ -253,20 +279,6 @@ def crop_with_ui(
         key=cropper_key,
     )
     return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
-
-
-def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
-    st.markdown(f"**{label} 크롭 / 회전**")
-    st.caption("크롭 박스를 조정하거나 초록 원형 핸들을 드래그해서 회전한 뒤 '크롭 적용'을 눌러주세요")
-
-    result = product_cropper_component(
-        imageData=image_to_data_url(img),
-        key=key,
-        default=None,
-    )
-    if isinstance(result, dict) and result.get("imageData"):
-        return image_from_data_url(result["imageData"])
-    return img
 
 
 def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
@@ -607,6 +619,7 @@ if config_file:
         st.session_state["loaded_config"] = loaded_config
         if st.session_state.get("loaded_config_signature") != config_signature:
             apply_loaded_config_to_session_state(loaded_config)
+            st.session_state["config_save_filename_input"] = config_file.name
             st.session_state["loaded_config_signature"] = config_signature
         st.success(
             "Config를 불러왔습니다. 아래 값들을 수정한 뒤 다시 저장하거나 상세페이지를 생성할 수 있습니다."
@@ -633,12 +646,21 @@ main_img = (
     if loaded_config.get("main_img")
     else None
 )
+config_signature_for_keys = st.session_state.get("loaded_config_signature", "loaded_config")
+config_key_suffix = hashlib.sha256(config_signature_for_keys.encode("utf-8")).hexdigest()[:12]
 if main_file:
     main_img = load_image(main_file)
     main_img = crop_with_ui(main_img, key="main_crop", label="Main 사진", aspect_ratio=(43, 49))
     st.image(main_img, caption="Main 사진(크롭 적용)", use_container_width=True)
 elif main_img:
-    st.image(main_img, caption="Main 사진(config에서 불러옴)", use_container_width=True)
+    st.info("Config에서 불러온 Main 사진도 아래에서 다시 크롭할 수 있습니다.")
+    main_img = crop_with_ui(
+        main_img,
+        key=f"main_config_crop_{config_key_suffix}",
+        label="Main 사진(config)",
+        aspect_ratio=(43, 49),
+    )
+    st.image(main_img, caption="Main 사진(config 크롭 적용)", use_container_width=True)
 
 st.markdown("---")
 
@@ -721,6 +743,17 @@ if model_files:
         model_imgs.append(cropped)
 elif model_imgs:
     st.write(f"모델컷 config 불러온 수: {len(model_imgs)}")
+    st.info("Config에서 불러온 모델컷도 각각 다시 크롭할 수 있습니다.")
+    edited_model_imgs = []
+    for i, img in enumerate(model_imgs):
+        cropped = crop_with_ui(
+            img,
+            key=f"model_config_crop_{config_key_suffix}_{i}",
+            label=f"모델컷 {i + 1}(config)",
+            aspect_ratio=(211, 259),
+        )
+        edited_model_imgs.append(cropped)
+    model_imgs = edited_model_imgs
 
 if model_imgs:
     cols = st.columns(3)
@@ -752,6 +785,16 @@ if product_files:
         product_imgs.append(cropped)
 elif product_imgs:
     st.write(f"제품컷 config 불러온 수: {len(product_imgs)}")
+    st.info("Config에서 불러온 제품컷도 각각 다시 크롭/회전할 수 있습니다.")
+    edited_product_imgs = []
+    for i, img in enumerate(product_imgs):
+        cropped = crop_product_with_rotation_ui(
+            img,
+            key=f"product_config_crop_{config_key_suffix}_{i}",
+            label=f"제품컷 {i + 1}(config)",
+        )
+        edited_product_imgs.append(cropped)
+    product_imgs = edited_product_imgs
 
 if product_imgs:
     cols = st.columns(3)
@@ -775,10 +818,17 @@ current_config = build_detail_config(
     model_imgs=model_imgs,
     product_imgs=product_imgs,
 )
+if "config_save_filename_input" not in st.session_state:
+    st.session_state["config_save_filename_input"] = "detail_page_config.json"
+config_save_filename = st.text_input(
+    "저장할 config 파일 이름",
+    key="config_save_filename_input",
+    help=".json 확장자는 입력하지 않아도 자동으로 붙습니다.",
+)
 st.download_button(
     label="현재 config 저장",
     data=config_to_bytes(current_config),
-    file_name="detail_page_config.json",
+    file_name=normalize_download_filename(config_save_filename),
     mime="application/json",
 )
 
