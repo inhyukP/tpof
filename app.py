@@ -1,7 +1,10 @@
+import base64
 import io
+import json
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from streamlit_cropper import st_cropper
 
@@ -14,6 +17,12 @@ PHOTO_BORDER = 20
 MODEL_CUT_H = 1056
 PRODUCT_CUT_H = 980
 POST_BOX_PATH = Path("assets/postfix_box_lot.JPG")
+CONFIG_VERSION = 1
+PRODUCT_CROPPER_PATH = Path(__file__).parent / "components" / "cropperjs"
+product_cropper_component = components.declare_component(
+    "product_cropper",
+    path=str(PRODUCT_CROPPER_PATH),
+)
 KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
 
@@ -122,17 +131,61 @@ def build_product_image_block(
     return canvas
 
 
-def rotate_image_clockwise(img: Image.Image, degrees: float, bg=PAGE_BG) -> Image.Image:
-    if degrees % 360 == 0:
-        return img
+def image_to_data_url(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="PNG")
+    encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{encoded}"
 
-    rotated = img.rotate(
-        -degrees,
-        resample=Image.Resampling.BICUBIC,
-        expand=True,
-        fillcolor=bg,
-    )
-    return rotated.convert("RGB")
+
+def image_from_data_url(data_url: str) -> Image.Image:
+    _, encoded = data_url.split(",", 1)
+    raw = base64.b64decode(encoded)
+    return Image.open(io.BytesIO(raw)).convert("RGB")
+
+
+def images_from_config(config: dict, key: str) -> list[Image.Image]:
+    return [image_from_data_url(data_url) for data_url in config.get(key, [])]
+
+
+def build_detail_config(
+    product_name: str,
+    item_text: str,
+    material_text: str,
+    size_text: str,
+    pendant_text: str,
+    thickness_text: str,
+    weight_text: str,
+    extra_text: str,
+    main_img: Image.Image | None,
+    model_imgs: list[Image.Image],
+    product_imgs: list[Image.Image],
+) -> dict:
+    return {
+        "version": CONFIG_VERSION,
+        "fields": {
+            "product_name": product_name,
+            "item_text": item_text,
+            "material_text": material_text,
+            "size_text": size_text,
+            "pendant_text": pendant_text,
+            "thickness_text": thickness_text,
+            "weight_text": weight_text,
+            "extra_text": extra_text,
+        },
+        "main_img": image_to_data_url(main_img) if main_img else None,
+        "model_imgs": [image_to_data_url(img) for img in model_imgs],
+        "product_imgs": [image_to_data_url(img) for img in product_imgs],
+    }
+
+
+def config_to_bytes(config: dict) -> bytes:
+    return json.dumps(config, ensure_ascii=False).encode("utf-8")
+
+
+def load_detail_config(uploaded_file) -> dict:
+    uploaded_file.seek(0)
+    return json.loads(uploaded_file.read().decode("utf-8"))
 
 
 def crop_with_ui(
@@ -140,7 +193,6 @@ def crop_with_ui(
     key: str,
     label: str,
     aspect_ratio: tuple[int, int] | None,
-    allow_rotation: bool = False,
 ) -> Image.Image:
     st.markdown(f"**{label} 크롭**")
     st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
@@ -171,6 +223,20 @@ def crop_with_ui(
         key=cropper_key,
     )
     return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
+
+
+def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
+    st.markdown(f"**{label} 크롭 / 회전**")
+    st.caption("크롭 박스를 조정하거나 초록 원형 핸들을 드래그해서 회전한 뒤 '크롭 적용'을 눌러주세요")
+
+    result = product_cropper_component(
+        imageData=image_to_data_url(img),
+        key=key,
+        default=None,
+    )
+    if isinstance(result, dict) and result.get("imageData"):
+        return image_from_data_url(result["imageData"])
+    return img
 
 
 def text_width(draw, text, font):
@@ -481,6 +547,28 @@ def build_detail_page(
 st.set_page_config(page_title="Jewelry Detail Page Maker", layout="centered")
 st.title("Jewelry Detail Page Maker")
 
+st.markdown("### Config 불러오기")
+config_file = st.file_uploader(
+    "저장해둔 config JSON을 불러오세요",
+    type=["json"],
+    accept_multiple_files=False,
+    key="config_file",
+)
+
+loaded_config = {}
+if config_file:
+    try:
+        loaded_config = load_detail_config(config_file)
+        st.success(
+            "Config를 불러왔습니다. 아래 값들을 수정한 뒤 다시 저장하거나 상세페이지를 생성할 수 있습니다."
+        )
+    except Exception as exc:
+        st.error(f"Config를 불러오지 못했습니다: {exc}")
+
+loaded_fields = loaded_config.get("fields", {})
+
+st.markdown("---")
+
 st.markdown("### 1. Main 사진 1장 업로드")
 main_file = st.file_uploader(
     "Main 사진 1장을 업로드하세요",
@@ -489,28 +577,41 @@ main_file = st.file_uploader(
     key="main_file",
 )
 
-main_img = None
+main_img = (
+    image_from_data_url(loaded_config["main_img"])
+    if loaded_config.get("main_img")
+    else None
+)
 if main_file:
     main_img = load_image(main_file)
     main_img = crop_with_ui(main_img, key="main_crop", label="Main 사진", aspect_ratio=(43, 49))
     st.image(main_img, caption="Main 사진(크롭 적용)", use_container_width=True)
+elif main_img:
+    st.image(main_img, caption="Main 사진(config에서 불러옴)", use_container_width=True)
 
 st.markdown("---")
 
 st.markdown("### 2. 제품 설명 입력, 빈칸으로 두면 안나옴, 없는 항목은 추가 설명에서 적을 것")
-product_name = st.text_input("제품명", value="")
+product_name = st.text_input("제품명", value=loaded_fields.get("product_name", ""))
 item_options = ["NECKLACE", "EARRING", "RING", "BRACELET", "ANKLET", "직접입력"]
-selected_item = st.selectbox("Item", options=item_options, index=0)
+loaded_item = loaded_fields.get("item_text", "NECKLACE")
+item_index = (
+    item_options.index(loaded_item)
+    if loaded_item in item_options
+    else item_options.index("직접입력")
+)
+selected_item = st.selectbox("Item", options=item_options, index=item_index)
 if selected_item == "직접입력":
-    item_text = st.text_input("직접 입력 Item", value="")
+    custom_item_default = loaded_item if loaded_item not in item_options else ""
+    item_text = st.text_input("직접 입력 Item", value=custom_item_default)
 else:
     item_text = selected_item
-material_text = st.text_input("Material", value="S925")
-size_text = st.text_input("Size", value="")
-pendant_text = st.text_input("Pendant", value="")
-thickness_text = st.text_input("Thickness", value="")
-weight_text = st.text_input("Weight", value="")
-extra_text = st.text_area("추가 설명(선택)", value="")
+material_text = st.text_input("Material", value=loaded_fields.get("material_text", "S925"))
+size_text = st.text_input("Size", value=loaded_fields.get("size_text", ""))
+pendant_text = st.text_input("Pendant", value=loaded_fields.get("pendant_text", ""))
+thickness_text = st.text_input("Thickness", value=loaded_fields.get("thickness_text", ""))
+weight_text = st.text_input("Weight", value=loaded_fields.get("weight_text", ""))
+extra_text = st.text_area("추가 설명(선택)", value=loaded_fields.get("extra_text", ""))
 
 st.markdown("---")
 
@@ -522,14 +623,23 @@ model_files = st.file_uploader(
     key="model_files",
 )
 
-model_imgs = []
+model_imgs = images_from_config(loaded_config, "model_imgs")
 if model_files:
+    model_imgs = []
     st.write(f"모델컷 업로드 수: {len(model_files)}")
     for i, file in enumerate(model_files):
         src = load_image(file)
-        cropped = crop_with_ui(src, key=f"model_crop_{i}", label=f"모델컷 {i + 1}", aspect_ratio=(211, 259))
+        cropped = crop_with_ui(
+            src,
+            key=f"model_crop_{i}",
+            label=f"모델컷 {i + 1}",
+            aspect_ratio=(211, 259),
+        )
         model_imgs.append(cropped)
+elif model_imgs:
+    st.write(f"모델컷 config 불러온 수: {len(model_imgs)}")
 
+if model_imgs:
     cols = st.columns(3)
     for i, img in enumerate(model_imgs):
         with cols[i % 3]:
@@ -545,24 +655,49 @@ product_files = st.file_uploader(
     key="product_files",
 )
 
-product_imgs = []
+product_imgs = images_from_config(loaded_config, "product_imgs")
 if product_files:
+    product_imgs = []
     st.write(f"제품컷 업로드 수: {len(product_files)}")
     for i, file in enumerate(product_files):
         src = load_image(file)
-        cropped = crop_with_ui(
+        cropped = crop_product_with_rotation_ui(
             src,
             key=f"product_crop_{i}",
             label=f"제품컷 {i + 1}",
-            aspect_ratio=None,
-            allow_rotation=True,
         )
         product_imgs.append(cropped)
+elif product_imgs:
+    st.write(f"제품컷 config 불러온 수: {len(product_imgs)}")
 
+if product_imgs:
     cols = st.columns(3)
     for i, img in enumerate(product_imgs):
         with cols[i % 3]:
             st.image(img, use_container_width=True)
+
+st.markdown("---")
+
+st.markdown("### 5. Config 저장")
+current_config = build_detail_config(
+    product_name=product_name,
+    item_text=item_text,
+    material_text=material_text,
+    size_text=size_text,
+    pendant_text=pendant_text,
+    thickness_text=thickness_text,
+    weight_text=weight_text,
+    extra_text=extra_text,
+    main_img=main_img,
+    model_imgs=model_imgs,
+    product_imgs=product_imgs,
+)
+st.download_button(
+    label="현재 config 저장",
+    data=config_to_bytes(current_config),
+    file_name="detail_page_config.json",
+    mime="application/json",
+)
 
 st.markdown("---")
 

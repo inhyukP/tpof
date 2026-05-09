@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      color: #141414;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .toolbar {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    button {
+      background: #ffffff;
+      border: 1px solid #cccccc;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1.2;
+      padding: 7px 10px;
+    }
+
+    button:hover {
+      background: #f5f5f5;
+    }
+
+    .hint {
+      color: #666666;
+      font-size: 12px;
+    }
+
+    .cropper-wrap {
+      border: 1px solid #dddddd;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    .rotate-handle {
+      align-items: center;
+      background: #4caf50;
+      border: 2px solid #ffffff;
+      border-radius: 999px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+      color: #ffffff;
+      cursor: grab;
+      display: none;
+      font-size: 15px;
+      height: 28px;
+      justify-content: center;
+      left: 50%;
+      position: absolute;
+      top: 10px;
+      transform: translateX(-50%);
+      user-select: none;
+      width: 28px;
+      z-index: 20;
+    }
+
+    .rotate-handle:active {
+      cursor: grabbing;
+    }
+
+    .error {
+      background: #fff3f3;
+      border: 1px solid #ffc9c9;
+      border-radius: 8px;
+      color: #b00020;
+      font-size: 13px;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="rotate-left" type="button">↺ 1°</button>
+    <button id="rotate-right" type="button">↻ 1°</button>
+    <button id="rotate-left-90" type="button">↺ 90°</button>
+    <button id="rotate-right-90" type="button">↻ 90°</button>
+    <button id="reset" type="button">초기화</button>
+    <button id="apply" type="button">크롭 적용</button>
+    <span class="hint">초록 원형 핸들을 드래그하면 크롭 화면 안에서 자유 회전됩니다.</span>
+  </div>
+  <div class="cropper-wrap" id="cropper-wrap">
+    <img id="image" alt="crop target" />
+    <div class="rotate-handle" id="rotate-handle" title="드래그해서 회전">↻</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+  <script>
+    const STREAMLIT_READY = "streamlit:componentReady";
+    const STREAMLIT_RENDER = "streamlit:render";
+    const STREAMLIT_SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+    const STREAMLIT_SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+
+    const image = document.getElementById("image");
+    const wrap = document.getElementById("cropper-wrap");
+    const rotateHandle = document.getElementById("rotate-handle");
+    let cropper = null;
+    let activeImageData = null;
+    let currentRotation = 0;
+    let dragStartPointerAngle = 0;
+    let dragStartRotation = 0;
+
+    function post(type, data) {
+      window.parent.postMessage({ isStreamlitMessage: true, type, ...data }, "*");
+    }
+
+    function setFrameHeight() {
+      post(STREAMLIT_SET_FRAME_HEIGHT, { height: document.body.scrollHeight });
+    }
+
+    function setComponentValue(value) {
+      post(STREAMLIT_SET_COMPONENT_VALUE, { value });
+    }
+
+    function normalizeAngle(degrees) {
+      let angle = degrees % 360;
+      if (angle > 180) angle -= 360;
+      if (angle < -180) angle += 360;
+      return angle;
+    }
+
+    function getCanvasCenter() {
+      const canvasData = cropper.getCanvasData();
+      const wrapRect = wrap.getBoundingClientRect();
+      return {
+        x: wrapRect.left + canvasData.left + canvasData.width / 2,
+        y: wrapRect.top + canvasData.top + canvasData.height / 2,
+      };
+    }
+
+    function pointerAngle(event) {
+      const center = getCanvasCenter();
+      return Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI;
+    }
+
+    function rotateTo(degrees) {
+      currentRotation = normalizeAngle(degrees);
+      cropper.rotateTo(currentRotation);
+      sendCroppedImage();
+    }
+
+    function rotateBy(degrees) {
+      rotateTo(currentRotation + degrees);
+    }
+
+    function sendCroppedImage() {
+      if (!cropper) return;
+      const canvas = cropper.getCroppedCanvas({ fillColor: "#f5f5f5" });
+      if (!canvas) return;
+      setComponentValue({ imageData: canvas.toDataURL("image/png"), rotation: currentRotation });
+    }
+
+    function showLoadError() {
+      document.body.innerHTML = '<div class="error">Cropper.js를 불러오지 못했습니다. 인터넷 연결 또는 CDN 접근을 확인해 주세요.</div>';
+      setFrameHeight();
+    }
+
+    function render(args) {
+      if (!window.Cropper) {
+        showLoadError();
+        return;
+      }
+
+      if (!args || !args.imageData) return;
+      if (activeImageData === args.imageData && cropper) {
+        setFrameHeight();
+        return;
+      }
+
+      activeImageData = args.imageData;
+      currentRotation = 0;
+      if (cropper) {
+        cropper.destroy();
+        cropper = null;
+      }
+
+      image.src = args.imageData;
+      image.onload = () => {
+        cropper = new Cropper(image, {
+          autoCropArea: 0.82,
+          background: false,
+          checkOrientation: false,
+          dragMode: "move",
+          responsive: true,
+          rotatable: true,
+          viewMode: 1,
+          zoomOnWheel: true,
+          ready() {
+            rotateHandle.style.display = "flex";
+            sendCroppedImage();
+            setFrameHeight();
+          },
+          cropend() {
+            sendCroppedImage();
+          },
+          zoom() {
+            window.setTimeout(sendCroppedImage, 0);
+          },
+        });
+      };
+    }
+
+    document.getElementById("rotate-left").addEventListener("click", () => rotateBy(-1));
+    document.getElementById("rotate-right").addEventListener("click", () => rotateBy(1));
+    document.getElementById("rotate-left-90").addEventListener("click", () => rotateBy(-90));
+    document.getElementById("rotate-right-90").addEventListener("click", () => rotateBy(90));
+    document.getElementById("apply").addEventListener("click", sendCroppedImage);
+    document.getElementById("reset").addEventListener("click", () => {
+      currentRotation = 0;
+      cropper.reset();
+      sendCroppedImage();
+    });
+
+    rotateHandle.addEventListener("pointerdown", (event) => {
+      if (!cropper) return;
+      event.preventDefault();
+      rotateHandle.setPointerCapture(event.pointerId);
+      dragStartPointerAngle = pointerAngle(event);
+      dragStartRotation = currentRotation;
+    });
+
+    rotateHandle.addEventListener("pointermove", (event) => {
+      if (!cropper || !rotateHandle.hasPointerCapture(event.pointerId)) return;
+      event.preventDefault();
+      rotateTo(dragStartRotation + pointerAngle(event) - dragStartPointerAngle);
+    });
+
+    rotateHandle.addEventListener("pointerup", (event) => {
+      if (rotateHandle.hasPointerCapture(event.pointerId)) {
+        rotateHandle.releasePointerCapture(event.pointerId);
+        sendCroppedImage();
+      }
+    });
+
+    window.addEventListener("message", (event) => {
+      if (event.data.type === STREAMLIT_RENDER) {
+        render(event.data.args);
+      }
+    });
+
+    post(STREAMLIT_READY, { apiVersion: 1 });
+    setFrameHeight();
+  </script>
+</body>
+</html>
