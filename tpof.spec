@@ -2,6 +2,8 @@
 
 import sys
 
+from PyInstaller.utils.hooks import collect_submodules
+
 
 block_cipher = None
 
@@ -18,12 +20,23 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        "app",
+        "flask",
+        "jinja2",
+        "werkzeug",
+        "click",
+        "itsdangerous",
+        "markupsafe",
         "PIL.Image",
         "PIL.ImageDraw",
         "PIL.ImageFont",
         "PIL.ImageOps",
         "waitress",
-    ],
+    ]
+    + collect_submodules("flask")
+    + collect_submodules("jinja2")
+    + collect_submodules("werkzeug")
+    + collect_submodules("waitress"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

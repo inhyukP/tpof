@@ -763,6 +763,29 @@ function startDesktopLifecycle() {
 
   const clientId = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const payload = () => JSON.stringify({ clientId });
+  let closed = false;
+  let heartbeatTimer = null;
+
+  const sendCloseSignal = () => {
+    if (closed) return;
+    closed = true;
+    if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+
+    const body = payload();
+    const contentType = "application/json";
+    if (navigator.sendBeacon) {
+      const ok = navigator.sendBeacon("/api/client-closed", new Blob([body], { type: contentType }));
+      if (ok) return;
+    }
+
+    fetch("/api/client-closed", {
+      method: "POST",
+      headers: { "Content-Type": contentType },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  };
+
   const heartbeat = () => {
     fetch("/api/heartbeat", {
       method: "POST",
@@ -773,22 +796,13 @@ function startDesktopLifecycle() {
   };
 
   heartbeat();
-  const heartbeatTimer = window.setInterval(heartbeat, 3000);
+  heartbeatTimer = window.setInterval(heartbeat, 3000);
 
   window.addEventListener("pagehide", () => {
-    window.clearInterval(heartbeatTimer);
-    const body = payload();
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon("/api/client-closed", new Blob([body], { type: "application/json" }));
-      return;
-    }
-    fetch("/api/client-closed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: true,
-    }).catch(() => {});
+    sendCloseSignal();
   });
+  window.addEventListener("beforeunload", sendCloseSignal);
+  window.addEventListener("unload", sendCloseSignal);
 }
 
 function init() {
