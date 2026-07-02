@@ -758,8 +758,42 @@ function showStartupWarnings() {
   if (warnings.length) showStatus(warnings.join(" "), "warning");
 }
 
+function startDesktopLifecycle() {
+  if (!appConfig.exitOnBrowserClose) return;
+
+  const clientId = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const payload = () => JSON.stringify({ clientId });
+  const heartbeat = () => {
+    fetch("/api/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload(),
+      keepalive: true,
+    }).catch(() => {});
+  };
+
+  heartbeat();
+  const heartbeatTimer = window.setInterval(heartbeat, 3000);
+
+  window.addEventListener("pagehide", () => {
+    window.clearInterval(heartbeatTimer);
+    const body = payload();
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/client-closed", new Blob([body], { type: "application/json" }));
+      return;
+    }
+    fetch("/api/client-closed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  });
+}
+
 function init() {
   collectElements();
+  startDesktopLifecycle();
   initItemOptions();
   bindEvents();
   renderAllEditors();

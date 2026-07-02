@@ -11,7 +11,8 @@
       itemOptions: {{ item_options | tojson }},
       fontReady: {{ font_ready | tojson }},
       fontNotice: {{ font_notice | tojson }},
-      postBoxExists: {{ post_box_exists | tojson }}
+      postBoxExists: {{ post_box_exists | tojson }},
+      exitOnBrowserClose: {{ exit_on_browser_close | tojson }}
     };
   </script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>

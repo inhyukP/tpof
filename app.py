@@ -3,6 +3,8 @@ import io
 import json
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -529,6 +531,12 @@ def build_detail_page(
 def create_app() -> Flask:
     app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
     app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
+    app.config["EXIT_ON_BROWSER_CLOSE"] = os.environ.get("TPOF_EXIT_ON_BROWSER_CLOSE") == "1"
+    app.config["DESKTOP_CLIENT_CONNECTED"] = False
+    app.config["DESKTOP_CLIENT_ID"] = None
+    app.config["DESKTOP_LAST_HEARTBEAT"] = 0.0
+    app.config["DESKTOP_SHUTDOWN_AT"] = None
+    app.config["DESKTOP_SHUTDOWN_TIMER"] = None
 
     @app.get("/")
     def index():
@@ -539,7 +547,44 @@ def create_app() -> Flask:
             font_ready=get_font_path(False) is not None or get_font_path(True) is not None,
             font_notice=KOREAN_FONT_NOTICE,
             post_box_exists=POST_BOX_PATH.exists(),
+            exit_on_browser_close=app.config["EXIT_ON_BROWSER_CLOSE"],
         )
+
+    @app.post("/api/heartbeat")
+    def client_heartbeat():
+        if not app.config["EXIT_ON_BROWSER_CLOSE"]:
+            return ("", 204)
+
+        payload = request.get_json(silent=True) or {}
+        client_id = payload.get("clientId")
+        app.config["DESKTOP_CLIENT_CONNECTED"] = True
+        app.config["DESKTOP_CLIENT_ID"] = client_id
+        app.config["DESKTOP_LAST_HEARTBEAT"] = time.monotonic()
+        app.config["DESKTOP_SHUTDOWN_AT"] = None
+        shutdown_timer = app.config.get("DESKTOP_SHUTDOWN_TIMER")
+        if shutdown_timer is not None:
+            shutdown_timer.cancel()
+            app.config["DESKTOP_SHUTDOWN_TIMER"] = None
+        return ("", 204)
+
+    @app.post("/api/client-closed")
+    def client_closed():
+        if not app.config["EXIT_ON_BROWSER_CLOSE"]:
+            return ("", 204)
+
+        payload = request.get_json(silent=True) or {}
+        client_id = payload.get("clientId")
+        known_client_id = app.config.get("DESKTOP_CLIENT_ID")
+        if known_client_id is None or client_id == known_client_id:
+            app.config["DESKTOP_SHUTDOWN_AT"] = time.monotonic() + 3
+            shutdown_timer = app.config.get("DESKTOP_SHUTDOWN_TIMER")
+            if shutdown_timer is not None:
+                shutdown_timer.cancel()
+            shutdown_timer = threading.Timer(3, lambda: os._exit(0))
+            shutdown_timer.daemon = True
+            shutdown_timer.start()
+            app.config["DESKTOP_SHUTDOWN_TIMER"] = shutdown_timer
+        return ("", 204)
 
     @app.post("/api/generate")
     def generate_detail_page():

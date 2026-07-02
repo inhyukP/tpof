@@ -19,6 +19,7 @@ python build_desktop.py
 ```
 
 The build creates a single `dist/TPOF.exe` file on Windows and `dist/TPOF-mac.zip` on macOS. The GitHub Actions workflow builds both artifacts automatically for the PR branch.
+In desktop builds, closing the browser tab also shuts down the local app process.
 
 ## What It Does
 
