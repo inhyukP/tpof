@@ -6,7 +6,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps  # PyInstaller 수집용
+from PIL import Image, ImageDraw, ImageFont, ImageOps  # PyInstaller collection hint
 
 
 HOST = "127.0.0.1"
@@ -34,33 +34,24 @@ def open_browser_when_ready() -> None:
 
 if __name__ == "__main__":
     base = bundled_path()
-    app_path = base / "app.py"
-
     os.chdir(base)
+    if str(base) not in sys.path:
+        sys.path.insert(0, str(base))
 
-    os.environ["STREAMLIT_GLOBAL_DEVELOPMENT_MODE"] = "false"
-    os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
-    os.environ["STREAMLIT_SERVER_ADDRESS"] = HOST
-    os.environ["STREAMLIT_SERVER_PORT"] = str(PORT)
-    os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
-    os.environ["STREAMLIT_BROWSER_SERVER_ADDRESS"] = "localhost"
-    os.environ["STREAMLIT_BROWSER_SERVER_PORT"] = str(PORT)
+    from app import create_app
 
-    from streamlit.web import cli as stcli
-
+    flask_app = create_app()
     threading.Thread(target=open_browser_when_ready, daemon=True).start()
 
-    sys.argv = [
-        "streamlit",
-        "run",
-        str(app_path),
-        "--global.developmentMode=false",
-        "--server.headless=true",
-        f"--server.address={HOST}",
-        f"--server.port={PORT}",
-        "--server.fileWatcherType=none",
-        "--browser.serverAddress=localhost",
-        f"--browser.serverPort={PORT}",
-    ]
+    try:
+        from waitress import serve
 
-    sys.exit(stcli.main())
+        serve(flask_app, host=HOST, port=PORT, threads=8)
+    except ImportError:
+        flask_app.run(
+            host=HOST,
+            port=PORT,
+            debug=False,
+            threaded=True,
+            use_reloader=False,
+        )

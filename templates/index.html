@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jewelry Detail Page Maker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  <script>
+    window.APP_CONFIG = {
+      configVersion: {{ config_version | tojson }},
+      itemOptions: {{ item_options | tojson }},
+      fontReady: {{ font_ready | tojson }},
+      fontNotice: {{ font_notice | tojson }},
+      postBoxExists: {{ post_box_exists | tojson }}
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Jewelry Detail Page Maker</h1>
+      <p>이미지 편집은 브라우저에서 처리하고, 최종 상세페이지 생성만 서버에서 실행합니다.</p>
+    </div>
+    <button class="primary" id="generateButton" type="button">상세페이지 생성</button>
+  </header>
+
+  <main class="workspace">
+    <aside class="side">
+      <section class="panel">
+        <h2>Config</h2>
+        <label class="file-button">
+          <input id="configFile" type="file" accept="application/json,.json" />
+          Config 불러오기
+        </label>
+        <label>
+          저장할 config 파일 이름
+          <input id="configSaveName" type="text" value="detail_page_config.json" />
+        </label>
+        <button id="saveConfigButton" type="button">현재 config 저장</button>
+      </section>
+
+      <section class="panel">
+        <h2>제품 설명</h2>
+        <label>
+          제품명
+          <input id="productName" type="text" />
+        </label>
+        <label>
+          Item
+          <select id="itemSelect"></select>
+        </label>
+        <label id="customItemWrap" class="hidden">
+          직접 입력 Item
+          <input id="customItem" type="text" />
+        </label>
+        <label>
+          Material
+          <input id="materialText" type="text" value="S925" />
+        </label>
+        <label>
+          Size
+          <input id="sizeText" type="text" />
+        </label>
+        <label>
+          Pendant
+          <input id="pendantText" type="text" />
+        </label>
+        <label>
+          Thickness
+          <input id="thicknessText" type="text" />
+        </label>
+        <label>
+          Weight
+          <input id="weightText" type="text" />
+        </label>
+        <label>
+          추가 설명
+          <textarea id="extraText" rows="6"></textarea>
+        </label>
+      </section>
+    </aside>
+
+    <section class="main">
+      <div id="status" class="status hidden"></div>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>1. Main 사진</h2>
+          <label class="file-button">
+            <input id="mainFile" type="file" accept="image/jpeg,image/png,image/webp" />
+            사진 선택
+          </label>
+        </div>
+        <div id="mainEditor" class="editor-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>2. 모델컷</h2>
+          <label class="file-button">
+            <input id="modelFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+            여러 장 선택
+          </label>
+        </div>
+        <div id="modelEditors" class="editor-list grid-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>3. 제품컷</h2>
+          <label class="file-button">
+            <input id="productFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+            여러 장 선택
+          </label>
+        </div>
+        <div id="productEditors" class="editor-list grid-list"></div>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="section-head">
+          <h2>생성 결과</h2>
+          <a id="downloadResult" class="download hidden" download="detail_page.jpg">JPG 다운로드</a>
+        </div>
+        <div id="resultMeta" class="muted">아직 생성된 상세페이지가 없습니다.</div>
+        <img id="resultImage" class="result-image hidden" alt="생성 결과" />
+      </section>
+    </section>
+  </main>
+</body>
+</html>

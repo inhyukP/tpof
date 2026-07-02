@@ -1,15 +1,16 @@
 import base64
-import hashlib
 import io
 import json
+import os
+import sys
 from pathlib import Path
 
-import streamlit as st
-import streamlit.components.v1 as components
+from flask import Flask, jsonify, render_template, request
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from streamlit_cropper import st_cropper
+from werkzeug.exceptions import RequestEntityTooLarge
 
 
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 PAGE_W = 860
 BLACK = (20, 20, 20)
 PAGE_BG = (245, 245, 245)
@@ -17,20 +18,22 @@ PHOTO_GAP = 10
 PHOTO_BORDER = 20
 MODEL_CUT_H = 1056
 PRODUCT_CUT_H = 980
-POST_BOX_PATH = Path("assets/postfix_box_lot.JPG")
+POST_BOX_PATH = BASE_DIR / "assets" / "postfix_box_lot.JPG"
 CONFIG_VERSION = 1
 ITEM_OPTIONS = ["NECKLACE", "EARRING", "RING", "BRACELET", "ANKLET", "직접입력"]
-PRODUCT_CROPPER_PATH = Path(__file__).parent / "components" / "cropperjs"
-product_cropper_component = components.declare_component(
-    "product_cropper",
-    path=str(PRODUCT_CROPPER_PATH),
+KOREAN_FONT_NOTICE = (
+    "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 "
+    "설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 )
-KOREAN_FONT_NOTICE = "한글이 깨지지 않도록 Pretendard 또는 Noto Sans CJK/Nanum 계열 폰트를 설치하거나 ./fonts 폴더에 Pretendard-Regular.otf, Pretendard-Bold.otf를 넣어주세요."
 
 
 def get_font_candidates(bold: bool = False) -> list[Path]:
     pretendard_name = "Pretendard-Bold" if bold else "Pretendard-Regular"
     return [
+        BASE_DIR / f"{pretendard_name}.otf",
+        BASE_DIR / f"{pretendard_name}.ttf",
+        BASE_DIR / "fonts" / f"{pretendard_name}.otf",
+        BASE_DIR / "fonts" / f"{pretendard_name}.ttf",
         Path(f"{pretendard_name}.otf"),
         Path(f"{pretendard_name}.ttf"),
         Path("fonts") / f"{pretendard_name}.otf",
@@ -38,12 +41,32 @@ def get_font_candidates(bold: bool = False) -> list[Path]:
         Path("/usr/share/fonts/truetype/pretendard") / f"{pretendard_name}.ttf",
         Path("/usr/share/fonts/opentype/pretendard") / f"{pretendard_name}.otf",
         Path("C:/Windows/Fonts/malgunbd.ttf" if bold else "C:/Windows/Fonts/malgun.ttf"),
-        Path("/System/Library/Fonts/AppleSDGothicNeoB.ttc" if bold else "/System/Library/Fonts/AppleSDGothicNeo.ttc"),
+        Path(
+            "/System/Library/Fonts/AppleSDGothicNeoB.ttc"
+            if bold
+            else "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+        ),
         Path("/Library/Fonts/AppleGothic.ttf"),
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
-        Path("/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf"),
-        Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf" if bold else "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+        Path(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+            if bold
+            else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+        ),
+        Path(
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"
+            if bold
+            else "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+        ),
+        Path(
+            "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf"
+            if bold
+            else "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf"
+        ),
+        Path(
+            "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        ),
     ]
 
 
@@ -61,9 +84,8 @@ def get_font(size: int, bold: bool = False):
     return ImageFont.truetype(str(font_path), size)
 
 
-def load_image(uploaded_file) -> Image.Image:
-    uploaded_file.seek(0)
-    img = Image.open(uploaded_file)
+def load_image_bytes(data: bytes) -> Image.Image:
+    img = Image.open(io.BytesIO(data))
     img = ImageOps.exif_transpose(img)
     return img.convert("RGB")
 
@@ -96,7 +118,12 @@ def spacer(height: int, bg=PAGE_BG) -> Image.Image:
     return Image.new("RGB", (PAGE_W, height), bg)
 
 
-def add_bg_border(block: Image.Image, border: int, bg=PAGE_BG, fit_mode: str = "cover") -> Image.Image:
+def add_bg_border(
+    block: Image.Image,
+    border: int,
+    bg=PAGE_BG,
+    fit_mode: str = "cover",
+) -> Image.Image:
     if border <= 0:
         return block
 
@@ -133,52 +160,33 @@ def build_product_image_block(
     return canvas
 
 
-def image_to_data_url(img: Image.Image) -> str:
+def image_to_data_url(
+    img: Image.Image,
+    image_format: str = "PNG",
+    **save_kwargs,
+) -> str:
     buf = io.BytesIO()
-    img.convert("RGB").save(buf, format="PNG")
+    fmt = image_format.upper()
+    mime = "jpeg" if fmt == "JPEG" else fmt.lower()
+    img.convert("RGB").save(buf, format=fmt, **save_kwargs)
     encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:image/{mime};base64,{encoded}"
 
 
 def image_from_data_url(data_url: str) -> Image.Image:
-    _, encoded = data_url.split(",", 1)
+    if not data_url:
+        raise ValueError("이미지 데이터가 비어 있습니다.")
+    if "," in data_url:
+        _, encoded = data_url.split(",", 1)
+    else:
+        encoded = data_url
     raw = base64.b64decode(encoded)
-    return Image.open(io.BytesIO(raw)).convert("RGB")
+    return load_image_bytes(raw)
 
 
-def images_from_config(config: dict, key: str) -> list[Image.Image]:
-    return [image_from_data_url(data_url) for data_url in config.get(key, [])]
-
-
-def build_detail_config(
-    product_name: str,
-    item_text: str,
-    material_text: str,
-    size_text: str,
-    pendant_text: str,
-    thickness_text: str,
-    weight_text: str,
-    extra_text: str,
-    main_img: Image.Image | None,
-    model_imgs: list[Image.Image],
-    product_imgs: list[Image.Image],
-) -> dict:
-    return {
-        "version": CONFIG_VERSION,
-        "fields": {
-            "product_name": product_name,
-            "item_text": item_text,
-            "material_text": material_text,
-            "size_text": size_text,
-            "pendant_text": pendant_text,
-            "thickness_text": thickness_text,
-            "weight_text": weight_text,
-            "extra_text": extra_text,
-        },
-        "main_img": image_to_data_url(main_img) if main_img else None,
-        "model_imgs": [image_to_data_url(img) for img in model_imgs],
-        "product_imgs": [image_to_data_url(img) for img in product_imgs],
-    }
+def images_from_payload(payload: dict, key: str) -> list[Image.Image]:
+    values = payload.get(key) or []
+    return [image_from_data_url(data_url) for data_url in values if data_url]
 
 
 def config_to_bytes(config: dict) -> bytes:
@@ -196,103 +204,6 @@ def normalize_download_filename(
     if not cleaned.lower().endswith(extension):
         cleaned = f"{cleaned}{extension}"
     return cleaned
-
-
-def load_detail_config(uploaded_file) -> dict:
-    uploaded_file.seek(0)
-    return json.loads(uploaded_file.read().decode("utf-8"))
-
-
-def get_uploaded_config_signature(uploaded_file) -> str:
-    uploaded_file.seek(0)
-    data = uploaded_file.read()
-    uploaded_file.seek(0)
-    digest = hashlib.sha256(data).hexdigest()
-    return f"{uploaded_file.name}:{len(data)}:{digest}"
-
-
-def apply_loaded_config_to_session_state(config: dict) -> None:
-    fields = config.get("fields", {})
-    st.session_state["product_name_input"] = fields.get("product_name", "")
-
-    loaded_item = fields.get("item_text", "NECKLACE")
-    if loaded_item in ITEM_OPTIONS:
-        st.session_state["selected_item_input"] = loaded_item
-        st.session_state["custom_item_input"] = ""
-    else:
-        st.session_state["selected_item_input"] = "직접입력"
-        st.session_state["custom_item_input"] = loaded_item
-
-    st.session_state["material_text_input"] = fields.get("material_text", "S925")
-    st.session_state["size_text_input"] = fields.get("size_text", "")
-    st.session_state["pendant_text_input"] = fields.get("pendant_text", "")
-    st.session_state["thickness_text_input"] = fields.get("thickness_text", "")
-    st.session_state["weight_text_input"] = fields.get("weight_text", "")
-    st.session_state["extra_text_input"] = fields.get("extra_text", "")
-
-
-def rotate_image_clockwise(img: Image.Image, degrees: float, bg=PAGE_BG) -> Image.Image:
-    if degrees % 360 == 0:
-        return img
-
-    return img.rotate(
-        -degrees,
-        resample=Image.Resampling.BICUBIC,
-        expand=True,
-        fillcolor=bg,
-    ).convert("RGB")
-
-
-def crop_with_ui(
-    img: Image.Image,
-    key: str,
-    label: str,
-    aspect_ratio: tuple[int, int] | None,
-    allow_rotation: bool = False,
-) -> Image.Image:
-    st.markdown(f"**{label} 크롭**")
-    st.caption("crop 박스를 조정한뒤 더블클릭하면 crop 결과가 적용됩니다")
-
-    working_img = img
-    cropper_key = key
-    if allow_rotation:
-        rotation = st.slider(
-            f"{label} 회전",
-            min_value=-180.0,
-            max_value=180.0,
-            value=0.0,
-            step=0.1,
-            format="%.1f°",
-            help="양수는 시계 방향, 음수는 반시계 방향으로 회전합니다.",
-            key=f"{key}_rotation",
-        )
-        working_img = rotate_image_clockwise(img, rotation)
-        rotation_key = f"{rotation:.1f}".replace("-", "m").replace(".", "_")
-        cropper_key = f"{key}_rotation_{rotation_key}"
-
-    cropped = st_cropper(
-        working_img,
-        realtime_update=True,
-        box_color="#4CAF50",
-        aspect_ratio=aspect_ratio,
-        return_type="image",
-        key=cropper_key,
-    )
-    return cropped.convert("RGB") if isinstance(cropped, Image.Image) else working_img
-
-
-def crop_product_with_rotation_ui(img: Image.Image, key: str, label: str) -> Image.Image:
-    st.markdown(f"**{label} 크롭 / 회전**")
-    st.caption("크롭 박스를 조정하거나 초록 원형 핸들을 드래그해서 회전한 뒤 '크롭 적용'을 눌러주세요")
-
-    result = product_cropper_component(
-        imageData=image_to_data_url(img),
-        key=key,
-        default=None,
-    )
-    if isinstance(result, dict) and result.get("imageData"):
-        return image_from_data_url(result["imageData"])
-    return img
 
 
 def text_width(draw, text, font):
@@ -446,42 +357,57 @@ def build_postfix_text_block() -> Image.Image:
     body_font = get_font(26, bold=False)
 
     text = [
-        ("GO GREEN PACKAGE", [
-            "더파트오브는 지구의 환경 보호를 위해 노력합니다.",
-            "패키지는 모두 재활용이 가능한 종이와 면으로 제작되었습니다.",
-            "함께 보내드리는 면 파우치는 주얼리 보관 외에도 일상의 작은 소품들을",
-            "담는 용도로 자유롭게 재사용해 보세요. 제품의 안전한 보관을 위한 폴리백과 더파트오브 정품 보증서를 함께 보내드립니다. 배송 건당 한 개의 패키지로 구성되나, 상품별로 개별 포장이 필요하신 경우 요청해 주시면 준비해 드리겠습니다.",
-        ]),
-        ("ORDER", [
-            "[일반 상품] 주문 확인 후 1~3일 내로 배송됩니다.",
-            "[주문 제작 상품] 사이즈/이니셜 선택이 필요한 제품은 핸드메이드 주문",
-            "제작으로 영업일 기준 7일-14일 제작 기간이 소요될 수 있습니다.",
-            "급한 주문건은 카카오톡 채널 @thepartof로 문의 바랍니다.",
-            "상품 제작은 주문 확인 후 시작되며 검수 후 출고됩니다.",
-        ]),
-        ("EXCHANGE / RETURN", [
-            "모든 교환 및 환불 문의는 카카오톡 채널 @thepartof 또는 홈페이지",
-            "Q&A 게시판을 통해 접수해 주시기 바랍니다.",
-            "더파트오브의 모든 제품은 엄격하고 꼼꼼한 검수 과정을 거쳐 출고됩니다.",
-            "혹시라도 제품에 결함이 있는 경우에는 수령 후 24시간 이내에 카카오톡  상담이나 게시판을 통해 사진과 함께 접수 부탁드립니다.",
-            "원활한 처리를 위해 접수 완료 시점으로부터 7일 이내에 배송된 택배사를 통한 제품 회수가 이루어져야 합니다.",
-            "확인된 초기 상품 불량의 경우에는 동일한 새 제품으로 교환해 드립니다.",
-            "제품 착용 이후에 발생하는 결함이나 문제는 A/S 상담을 통해 안내받으실 수 있으며 수리 내용에 따라 비용이 발생할 수 있습니다."
-        ]),
-        ("AFTER SERVICE", [
-            "품질 보증 기간은 보증서 기준이며, 제품별로 수리 가능 여부가 다를 수",
-            "있습니다. 제품을 보내시기 전에 A/S 가능 여부를 카카오톡 채널을 통해 확인바랍니다.",
-            "A/S 문의 : 카카오톡 채널 @thepartof",
-        ]),
-        ("ATTENTION", [
-            "착용 흔적/오염/훼손이 있는 경우 교환 및 반품이 제한될 수 있습니다.",
-            "제작 과정상의 미세한 스크래치, 기포, 천연석의 컬러, 톤, 크기 등은 상품/교환 환불 사유에 해당 되지 않습니다.",
-            "사용자의 환경이나 해상도 설정에 따라 실제 제품의 색상과 다소 차이가  있을 수 있습니다.",
-            "금속 알레르기 반응이 있는 고객님께서는 소재를 충분히 확인하신 후",
-            "신중한 구매를 부탁드립니다.",
-            "구매 전 미리 공지해 드린 유의 사항을 숙지하지 않아 발생하는 문제에   대해서는 처리가 어려울 수 있습니다.",
-            "기타 제품 불량은 소비자 분쟁 해결 기준에 따라 공정하게 보상해 드립니다."
-        ]),
+        (
+            "GO GREEN PACKAGE",
+            [
+                "더파트오브는 지구의 환경 보호를 위해 노력합니다.",
+                "패키지는 모두 재활용이 가능한 종이와 면으로 제작되었습니다.",
+                "함께 보내드리는 면 파우치는 주얼리 보관 외에도 일상의 작은 소품들을",
+                "담는 용도로 자유롭게 재사용해 보세요. 제품의 안전한 보관을 위한 폴리백과 더파트오브 정품 보증서를 함께 보내드립니다. 배송 건당 한 개의 패키지로 구성되나, 상품별로 개별 포장이 필요하신 경우 요청해 주시면 준비해 드리겠습니다.",
+            ],
+        ),
+        (
+            "ORDER",
+            [
+                "[일반 상품] 주문 확인 후 1~3일 내로 배송됩니다.",
+                "[주문 제작 상품] 사이즈/이니셜 선택이 필요한 제품은 핸드메이드 주문",
+                "제작으로 영업일 기준 7일-14일 제작 기간이 소요될 수 있습니다.",
+                "급한 주문건은 카카오톡 채널 @thepartof로 문의 바랍니다.",
+                "상품 제작은 주문 확인 후 시작되며 검수 후 출고됩니다.",
+            ],
+        ),
+        (
+            "EXCHANGE / RETURN",
+            [
+                "모든 교환 및 환불 문의는 카카오톡 채널 @thepartof 또는 홈페이지",
+                "Q&A 게시판을 통해 접수해 주시기 바랍니다.",
+                "더파트오브의 모든 제품은 엄격하고 꼼꼼한 검수 과정을 거쳐 출고됩니다.",
+                "혹시라도 제품에 결함이 있는 경우에는 수령 후 24시간 이내에 카카오톡  상담이나 게시판을 통해 사진과 함께 접수 부탁드립니다.",
+                "원활한 처리를 위해 접수 완료 시점으로부터 7일 이내에 배송된 택배사를 통한 제품 회수가 이루어져야 합니다.",
+                "확인된 초기 상품 불량의 경우에는 동일한 새 제품으로 교환해 드립니다.",
+                "제품 착용 이후에 발생하는 결함이나 문제는 A/S 상담을 통해 안내받으실 수 있으며 수리 내용에 따라 비용이 발생할 수 있습니다.",
+            ],
+        ),
+        (
+            "AFTER SERVICE",
+            [
+                "품질 보증 기간은 보증서 기준이며, 제품별로 수리 가능 여부가 다를 수",
+                "있습니다. 제품을 보내시기 전에 A/S 가능 여부를 카카오톡 채널을 통해 확인바랍니다.",
+                "A/S 문의 : 카카오톡 채널 @thepartof",
+            ],
+        ),
+        (
+            "ATTENTION",
+            [
+                "착용 흔적/오염/훼손이 있는 경우 교환 및 반품이 제한될 수 있습니다.",
+                "제작 과정상의 미세한 스크래치, 기포, 천연석의 컬러, 톤, 크기 등은 상품/교환 환불 사유에 해당 되지 않습니다.",
+                "사용자의 환경이나 해상도 설정에 따라 실제 제품의 색상과 다소 차이가  있을 수 있습니다.",
+                "금속 알레르기 반응이 있는 고객님께서는 소재를 충분히 확인하신 후",
+                "신중한 구매를 부탁드립니다.",
+                "구매 전 미리 공지해 드린 유의 사항을 숙지하지 않아 발생하는 문제에   대해서는 처리가 어려울 수 있습니다.",
+                "기타 제품 불량은 소비자 분쟁 해결 기준에 따라 공정하게 보상해 드립니다.",
+            ],
+        ),
     ]
 
     temp = Image.new("RGB", (PAGE_W, 100), PAGE_BG)
@@ -600,292 +526,72 @@ def build_detail_page(
     return stack_blocks(blocks)
 
 
-st.set_page_config(page_title="Jewelry Detail Page Maker", layout="centered")
-st.title("Jewelry Detail Page Maker")
+def create_app() -> Flask:
+    app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
+    app.config["MAX_CONTENT_LENGTH"] = 256 * 1024 * 1024
 
-st.markdown("### Config 불러오기")
-config_file = st.file_uploader(
-    "저장해둔 config JSON을 불러오세요",
-    type=["json"],
-    accept_multiple_files=False,
-    key="config_file",
-)
-
-loaded_config = st.session_state.get("loaded_config", {})
-if config_file:
-    try:
-        config_signature = get_uploaded_config_signature(config_file)
-        loaded_config = load_detail_config(config_file)
-        st.session_state["loaded_config"] = loaded_config
-        if st.session_state.get("loaded_config_signature") != config_signature:
-            apply_loaded_config_to_session_state(loaded_config)
-            st.session_state["config_save_filename_input"] = config_file.name
-            st.session_state["loaded_config_signature"] = config_signature
-        st.success(
-            "Config를 불러왔습니다. 아래 값들을 수정한 뒤 다시 저장하거나 상세페이지를 생성할 수 있습니다."
+    @app.get("/")
+    def index():
+        return render_template(
+            "index.html",
+            item_options=ITEM_OPTIONS,
+            config_version=CONFIG_VERSION,
+            font_ready=get_font_path(False) is not None or get_font_path(True) is not None,
+            font_notice=KOREAN_FONT_NOTICE,
+            post_box_exists=POST_BOX_PATH.exists(),
         )
-    except Exception as exc:
-        loaded_config = {}
-        st.session_state["loaded_config"] = loaded_config
-        st.error(f"Config를 불러오지 못했습니다: {exc}")
 
-loaded_fields = loaded_config.get("fields", {})
+    @app.post("/api/generate")
+    def generate_detail_page():
+        payload = request.get_json(silent=True) or {}
+        fields = payload.get("fields") or {}
 
-st.markdown("---")
+        try:
+            main_data = payload.get("main_img")
+            if not main_data:
+                return jsonify({"error": "Main 사진 1장은 반드시 필요합니다."}), 400
 
-st.markdown("### 1. Main 사진 1장 업로드")
-main_file = st.file_uploader(
-    "Main 사진 1장을 업로드하세요",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=False,
-    key="main_file",
-)
+            main_img = image_from_data_url(main_data)
+            model_imgs = images_from_payload(payload, "model_imgs")
+            product_imgs = images_from_payload(payload, "product_imgs")
 
-main_img = (
-    image_from_data_url(loaded_config["main_img"])
-    if loaded_config.get("main_img")
-    else None
-)
-config_signature_for_keys = st.session_state.get("loaded_config_signature", "loaded_config")
-config_key_suffix = hashlib.sha256(config_signature_for_keys.encode("utf-8")).hexdigest()[:12]
-if main_file:
-    main_img = load_image(main_file)
-    main_img = crop_with_ui(main_img, key="main_crop", label="Main 사진", aspect_ratio=(43, 49))
-    st.image(main_img, caption="Main 사진(크롭 적용)", use_container_width=True)
-elif main_img:
-    st.info("Config에 저장된 Main 사진의 기존 크롭 결과를 그대로 불러왔습니다.")
-    if st.checkbox(
-        "Main 사진(config)을 다시 크롭하기",
-        value=False,
-        key=f"main_config_recrop_{config_key_suffix}",
-    ):
-        main_img = crop_with_ui(
-            main_img,
-            key=f"main_config_crop_{config_key_suffix}",
-            label="Main 사진(config)",
-            aspect_ratio=(43, 49),
-        )
-        st.image(main_img, caption="Main 사진(config 다시 크롭 적용)", use_container_width=True)
-    else:
-        st.image(main_img, caption="Main 사진(config 기존 크롭 유지)", use_container_width=True)
-
-st.markdown("---")
-
-st.markdown("### 2. 제품 설명 입력, 빈칸으로 두면 안나옴, 없는 항목은 추가 설명에서 적을 것")
-product_name = st.text_input(
-    "제품명",
-    value=loaded_fields.get("product_name", ""),
-    key="product_name_input",
-)
-loaded_item = loaded_fields.get("item_text", "NECKLACE")
-item_index = (
-    ITEM_OPTIONS.index(loaded_item)
-    if loaded_item in ITEM_OPTIONS
-    else ITEM_OPTIONS.index("직접입력")
-)
-selected_item = st.selectbox(
-    "Item",
-    options=ITEM_OPTIONS,
-    index=item_index,
-    key="selected_item_input",
-)
-if selected_item == "직접입력":
-    custom_item_default = loaded_item if loaded_item not in ITEM_OPTIONS else ""
-    item_text = st.text_input(
-        "직접 입력 Item",
-        value=custom_item_default,
-        key="custom_item_input",
-    )
-else:
-    item_text = selected_item
-material_text = st.text_input(
-    "Material",
-    value=loaded_fields.get("material_text", "S925"),
-    key="material_text_input",
-)
-size_text = st.text_input("Size", value=loaded_fields.get("size_text", ""), key="size_text_input")
-pendant_text = st.text_input(
-    "Pendant",
-    value=loaded_fields.get("pendant_text", ""),
-    key="pendant_text_input",
-)
-thickness_text = st.text_input(
-    "Thickness",
-    value=loaded_fields.get("thickness_text", ""),
-    key="thickness_text_input",
-)
-weight_text = st.text_input(
-    "Weight",
-    value=loaded_fields.get("weight_text", ""),
-    key="weight_text_input",
-)
-extra_text = st.text_area(
-    "추가 설명(선택)",
-    value=loaded_fields.get("extra_text", ""),
-    key="extra_text_input",
-)
-
-st.markdown("---")
-
-st.markdown("### 3. 모델컷 사진들 업로드")
-model_files = st.file_uploader(
-    "모델컷 사진을 여러 장 업로드하세요",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=True,
-    key="model_files",
-)
-
-model_imgs = images_from_config(loaded_config, "model_imgs")
-if model_files:
-    model_imgs = []
-    st.write(f"모델컷 업로드 수: {len(model_files)}")
-    for i, file in enumerate(model_files):
-        src = load_image(file)
-        cropped = crop_with_ui(
-            src,
-            key=f"model_crop_{i}",
-            label=f"모델컷 {i + 1}",
-            aspect_ratio=(211, 259),
-        )
-        model_imgs.append(cropped)
-elif model_imgs:
-    st.write(f"모델컷 config 불러온 수: {len(model_imgs)}")
-    st.info("Config에 저장된 모델컷의 기존 크롭 결과를 그대로 불러왔습니다.")
-    if st.checkbox(
-        "모델컷(config)을 다시 크롭하기",
-        value=False,
-        key=f"model_config_recrop_{config_key_suffix}",
-    ):
-        edited_model_imgs = []
-        for i, img in enumerate(model_imgs):
-            cropped = crop_with_ui(
-                img,
-                key=f"model_config_crop_{config_key_suffix}_{i}",
-                label=f"모델컷 {i + 1}(config)",
-                aspect_ratio=(211, 259),
+            result = build_detail_page(
+                main_img=main_img,
+                product_name=fields.get("product_name", ""),
+                item_text=fields.get("item_text", "NECKLACE"),
+                material_text=fields.get("material_text", "S925"),
+                size_text=fields.get("size_text", ""),
+                pendant_text=fields.get("pendant_text", ""),
+                thickness_text=fields.get("thickness_text", ""),
+                weight_text=fields.get("weight_text", ""),
+                extra_text=fields.get("extra_text", ""),
+                model_imgs=model_imgs,
+                product_imgs=product_imgs,
             )
-            edited_model_imgs.append(cropped)
-        model_imgs = edited_model_imgs
+        except FileNotFoundError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"상세페이지 생성 중 오류가 발생했습니다: {exc}"}), 400
 
-if model_imgs:
-    cols = st.columns(3)
-    for i, img in enumerate(model_imgs):
-        with cols[i % 3]:
-            st.image(img, use_container_width=True)
-
-st.markdown("---")
-
-st.markdown("### 4. 제품컷 사진들 업로드")
-product_files = st.file_uploader(
-    "제품컷 사진을 여러 장 업로드하세요",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=True,
-    key="product_files",
-)
-
-product_imgs = images_from_config(loaded_config, "product_imgs")
-if product_files:
-    product_imgs = []
-    st.write(f"제품컷 업로드 수: {len(product_files)}")
-    for i, file in enumerate(product_files):
-        src = load_image(file)
-        cropped = crop_product_with_rotation_ui(
-            src,
-            key=f"product_crop_{i}",
-            label=f"제품컷 {i + 1}",
-        )
-        product_imgs.append(cropped)
-elif product_imgs:
-    st.write(f"제품컷 config 불러온 수: {len(product_imgs)}")
-    st.info("Config에 저장된 제품컷의 기존 크롭/회전 결과를 그대로 불러왔습니다.")
-    if st.checkbox(
-        "제품컷(config)을 다시 크롭/회전하기",
-        value=False,
-        key=f"product_config_recrop_{config_key_suffix}",
-    ):
-        edited_product_imgs = []
-        for i, img in enumerate(product_imgs):
-            cropped = crop_product_with_rotation_ui(
-                img,
-                key=f"product_config_crop_{config_key_suffix}_{i}",
-                label=f"제품컷 {i + 1}(config)",
-            )
-            edited_product_imgs.append(cropped)
-        product_imgs = edited_product_imgs
-
-if product_imgs:
-    cols = st.columns(3)
-    for i, img in enumerate(product_imgs):
-        with cols[i % 3]:
-            st.image(img, use_container_width=True)
-
-st.markdown("---")
-
-st.markdown("### 5. Config 저장")
-current_config = build_detail_config(
-    product_name=product_name,
-    item_text=item_text,
-    material_text=material_text,
-    size_text=size_text,
-    pendant_text=pendant_text,
-    thickness_text=thickness_text,
-    weight_text=weight_text,
-    extra_text=extra_text,
-    main_img=main_img,
-    model_imgs=model_imgs,
-    product_imgs=product_imgs,
-)
-if "config_save_filename_input" not in st.session_state:
-    st.session_state["config_save_filename_input"] = "detail_page_config.json"
-config_save_filename = st.text_input(
-    "저장할 config 파일 이름",
-    key="config_save_filename_input",
-    help=".json 확장자는 입력하지 않아도 자동으로 붙습니다.",
-)
-st.download_button(
-    label="현재 config 저장",
-    data=config_to_bytes(current_config),
-    file_name=normalize_download_filename(config_save_filename),
-    mime="application/json",
-)
-
-st.markdown("---")
-
-korean_font_ready = get_font_path(False) is not None or get_font_path(True) is not None
-if not korean_font_ready:
-    st.error(KOREAN_FONT_NOTICE)
-    st.stop()
-
-if not POST_BOX_PATH.exists():
-    st.warning("고정 박스 사진 파일이 없습니다: assets/postfix_box_lot.JPG")
-
-
-if st.button("상세페이지 생성"):
-    if main_img is None:
-        st.error("Main 사진 1장은 반드시 필요합니다.")
-    else:
-        result = build_detail_page(
-            main_img=main_img,
-            product_name=product_name,
-            item_text=item_text,
-            material_text=material_text,
-            size_text=size_text,
-            pendant_text=pendant_text,
-            thickness_text=thickness_text,
-            weight_text=weight_text,
-            extra_text=extra_text,
-            model_imgs=model_imgs,
-            product_imgs=product_imgs,
+        return jsonify(
+            {
+                "imageData": image_to_data_url(result, "JPEG", quality=92),
+                "width": result.width,
+                "height": result.height,
+                "fileName": "detail_page.jpg",
+            }
         )
 
-        st.success("상세페이지 생성 완료")
-        st.image(result, caption="생성 결과", use_container_width=True)
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_entity_too_large(_exc):
+        return jsonify({"error": "이미지 데이터가 너무 큽니다. 사진 수나 원본 크기를 줄여주세요."}), 413
 
-        buf = io.BytesIO()
-        result.save(buf, format="JPEG", quality=92)
-        st.download_button(
-            label="상세페이지 JPG 다운로드",
-            data=buf.getvalue(),
-            file_name="detail_page.jpg",
-            mime="image/jpeg",
-        )
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8501"))
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
