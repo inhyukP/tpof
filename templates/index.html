@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Jewelry Detail Page Maker</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   <script>
     window.APP_CONFIG = {
@@ -15,7 +14,6 @@
       postBoxExists: {{ post_box_exists | tojson }}
     };
   </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
 <body>

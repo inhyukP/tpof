@@ -267,14 +267,108 @@ textarea {
 }
 
 .crop-area {
+  align-items: center;
+  background: #f8f5f0;
+  display: flex;
+  justify-content: center;
   max-height: 620px;
   min-height: 220px;
-  overflow: hidden;
+  overflow: auto;
+  padding: 12px;
 }
 
 .crop-area img {
   display: block;
   max-width: 100%;
+}
+
+.local-cropper {
+  max-width: 100%;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+}
+
+.local-cropper-canvas {
+  background: #ffffff;
+  display: block;
+}
+
+.crop-box {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(25, 24, 20, 0.38);
+  cursor: move;
+  position: absolute;
+}
+
+.crop-handle {
+  background: #ffffff;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  height: 12px;
+  position: absolute;
+  width: 12px;
+}
+
+.crop-handle-n,
+.crop-handle-s {
+  cursor: ns-resize;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.crop-handle-e,
+.crop-handle-w {
+  cursor: ew-resize;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.crop-handle-n {
+  top: -7px;
+}
+
+.crop-handle-s {
+  bottom: -7px;
+}
+
+.crop-handle-e {
+  right: -7px;
+}
+
+.crop-handle-w {
+  left: -7px;
+}
+
+.crop-handle-ne,
+.crop-handle-sw {
+  cursor: nesw-resize;
+}
+
+.crop-handle-nw,
+.crop-handle-se {
+  cursor: nwse-resize;
+}
+
+.crop-handle-ne {
+  right: -7px;
+  top: -7px;
+}
+
+.crop-handle-nw {
+  left: -7px;
+  top: -7px;
+}
+
+.crop-handle-se {
+  bottom: -7px;
+  right: -7px;
+}
+
+.crop-handle-sw {
+  bottom: -7px;
+  left: -7px;
 }
 
 .muted {
