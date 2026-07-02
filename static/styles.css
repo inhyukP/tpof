@@ -282,15 +282,20 @@ textarea {
   font-size: 14px;
 }
 
+.result-panel {
+  overflow-x: auto;
+}
+
 .result-image {
   background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: block;
+  height: auto;
   margin-top: 14px;
-  max-height: 78vh;
-  max-width: 100%;
-  object-fit: contain;
+  max-height: none;
+  max-width: none;
+  width: auto;
 }
 
 .hidden {
