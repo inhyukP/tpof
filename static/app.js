@@ -116,6 +116,7 @@ class LocalCropper {
     this.options = options;
     this.aspectRatio = Number.isFinite(options.aspectRatio) ? options.aspectRatio : null;
     this.autoCropArea = options.autoCropArea || 0.9;
+    this.rotatable = options.rotatable === true;
     this.rotation = 0;
     this.ready = false;
     this.crop = { x: 0, y: 0, width: 0, height: 0 };
@@ -123,6 +124,7 @@ class LocalCropper {
 
     this.host = document.createElement("div");
     this.host.className = "local-cropper";
+    this.host.classList.toggle("rotatable", this.rotatable);
     this.canvas = document.createElement("canvas");
     this.canvas.className = "local-cropper-canvas";
     this.cropBox = document.createElement("div");
@@ -134,16 +136,30 @@ class LocalCropper {
       this.cropBox.appendChild(handle);
     }
 
-    this.host.append(this.canvas, this.cropBox);
+    if (this.rotatable) {
+      this.rotateHandle = document.createElement("button");
+      this.rotateHandle.className = "rotate-handle";
+      this.rotateHandle.type = "button";
+      this.rotateHandle.title = "드래그해서 회전";
+      this.rotateHandle.textContent = "↻";
+      this.rotationBadge = document.createElement("div");
+      this.rotationBadge.className = "rotation-badge";
+      this.rotationBadge.textContent = "0°";
+      this.host.append(this.canvas, this.cropBox, this.rotateHandle, this.rotationBadge);
+    } else {
+      this.host.append(this.canvas, this.cropBox);
+    }
     this.image.replaceWith(this.host);
 
     this.onPointerDown = this.onPointerDown.bind(this);
+    this.onRotatePointerDown = this.onRotatePointerDown.bind(this);
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onResize = this.onResize.bind(this);
     this.onLoad = () => this.rebuild(true);
 
     this.cropBox.addEventListener("pointerdown", this.onPointerDown);
+    this.rotateHandle?.addEventListener("pointerdown", this.onRotatePointerDown);
     window.addEventListener("resize", this.onResize);
 
     if (this.image.complete && this.image.naturalWidth) {
@@ -155,6 +171,7 @@ class LocalCropper {
 
   destroy() {
     this.cropBox.removeEventListener("pointerdown", this.onPointerDown);
+    this.rotateHandle?.removeEventListener("pointerdown", this.onRotatePointerDown);
     window.removeEventListener("pointermove", this.onPointerMove);
     window.removeEventListener("pointerup", this.onPointerUp);
     window.removeEventListener("resize", this.onResize);
@@ -168,8 +185,13 @@ class LocalCropper {
   }
 
   rotate(degrees) {
-    this.rotation = (this.rotation + degrees) % 360;
-    this.rebuild(true);
+    this.setRotation(this.rotation + degrees, true);
+  }
+
+  setRotation(degrees, resetCrop = true) {
+    this.rotation = ((degrees % 360) + 360) % 360;
+    this.rebuild(resetCrop);
+    this.updateRotationUI();
   }
 
   getCroppedCanvas(options = {}) {
@@ -203,6 +225,7 @@ class LocalCropper {
     if (resetCrop || !this.crop.width || !this.crop.height) this.setInitialCrop();
     this.crop = this.fitCrop(this.crop);
     this.renderCropBox();
+    this.updateRotationUI();
     this.ready = true;
   }
 
@@ -298,6 +321,13 @@ class LocalCropper {
     });
   }
 
+  updateRotationUI() {
+    if (!this.rotationBadge) return;
+    const normalized = Math.round(this.rotation * 10) / 10;
+    const label = Number.isInteger(normalized) ? `${normalized}°` : `${normalized.toFixed(1)}°`;
+    this.rotationBadge.textContent = label;
+  }
+
   onResize() {
     if (!this.ready) return;
     const oldWidth = this.displayWidth;
@@ -327,9 +357,29 @@ class LocalCropper {
     window.addEventListener("pointerup", this.onPointerUp);
   }
 
+  onRotatePointerDown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const center = this.screenCenter();
+    this.drag = {
+      mode: "rotate",
+      center,
+      startAngle: this.pointerAngle(event, center),
+      startRotation: this.rotation,
+    };
+    this.host.classList.add("rotating");
+    window.addEventListener("pointermove", this.onPointerMove);
+    window.addEventListener("pointerup", this.onPointerUp);
+  }
+
   onPointerMove(event) {
     if (!this.drag) return;
     event.preventDefault();
+    if (this.drag.mode === "rotate") {
+      const angleDelta = this.pointerAngle(event, this.drag.center) - this.drag.startAngle;
+      this.setRotation(this.drag.startRotation + angleDelta, true);
+      return;
+    }
     const dx = event.clientX - this.drag.startX;
     const dy = event.clientY - this.drag.startY;
     if (this.drag.mode === "move") {
@@ -345,9 +395,22 @@ class LocalCropper {
   }
 
   onPointerUp() {
+    this.host.classList.remove("rotating");
     this.drag = null;
     window.removeEventListener("pointermove", this.onPointerMove);
     window.removeEventListener("pointerup", this.onPointerUp);
+  }
+
+  screenCenter() {
+    const rect = this.host.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }
+
+  pointerAngle(event, center) {
+    return (Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180) / Math.PI;
   }
 
   resizeCrop(start, dx, dy, direction) {
@@ -433,12 +496,6 @@ function applyAllEditors() {
   }
 }
 
-function rotateEditor(id, degrees) {
-  const editor = editors.get(id);
-  if (!editor?.cropper) return;
-  editor.cropper.rotate(degrees);
-}
-
 function resetEditor(id) {
   const editor = editors.get(id);
   const item = findImage(id);
@@ -487,12 +544,6 @@ function renderImageList(container, items, type, aspectRatio) {
         showStatus(`${item.name} 편집을 초기화했습니다.`);
       })
     );
-    if (type === "product") {
-      actions.appendChild(makeButton("↺ 1°", () => rotateEditor(item.id, -1)));
-      actions.appendChild(makeButton("↻ 1°", () => rotateEditor(item.id, 1)));
-      actions.appendChild(makeButton("↺ 90°", () => rotateEditor(item.id, -90)));
-      actions.appendChild(makeButton("↻ 90°", () => rotateEditor(item.id, 90)));
-    }
     actions.appendChild(makeButton("삭제", () => removeImage(type, item.id), "danger"));
 
     toolbar.appendChild(title);
