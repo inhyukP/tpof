@@ -18,7 +18,7 @@ jobs:
           - name: Windows
             os: windows-latest
             artifact: TPOF-windows
-            path: dist/TPOF-windows.zip
+            path: dist/TPOF.exe
           - name: macOS
             os: macos-latest
             artifact: TPOF-mac

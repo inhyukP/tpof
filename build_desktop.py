@@ -18,8 +18,10 @@ def run(command: list[str]) -> None:
 def archive_output() -> Path:
     system = platform.system().lower()
     if system == "windows":
-        source = DIST / "TPOF"
-        archive_base = DIST / "TPOF-windows"
+        source = DIST / "TPOF.exe"
+        if not source.exists():
+            raise FileNotFoundError(f"Build output not found: {source}")
+        return source
     elif system == "darwin":
         source = DIST / "TPOF.app"
         archive_base = DIST / "TPOF-mac"

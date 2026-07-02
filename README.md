@@ -18,7 +18,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python build_desktop.py
 ```
 
-The build creates `dist/TPOF-windows.zip` on Windows and `dist/TPOF-mac.zip` on macOS. The GitHub Actions workflow builds both artifacts automatically for the PR branch.
+The build creates a single `dist/TPOF.exe` file on Windows and `dist/TPOF-mac.zip` on macOS. The GitHub Actions workflow builds both artifacts automatically for the PR branch.
 
 ## What It Does
 
